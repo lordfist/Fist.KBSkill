@@ -1,0 +1,12 @@
+{
+  "name": "fist-kb-local",
+  "owner": { "name": "Fist KB contributors" },
+  "plugins": [
+    {
+      "name": "fist-kb",
+      "source": "./",
+      "description": "Local typed knowledge and reviewed updates.",
+      "version": "0.2.2"
+    }
+  ]
+}

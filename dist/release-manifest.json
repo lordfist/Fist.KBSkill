@@ -1,0 +1,16 @@
+{
+  "format": 2,
+  "name": "Fist KB",
+  "version": "0.2.2",
+  "runtime_bundled": false,
+  "files": {
+    "fist-kb-0.2.2.zip": {
+      "bytes": 169063,
+      "sha256": "731AD67F3B82FA0F3DEBEA70470922EC025588248CEDD2CC98B442CE79356BC6"
+    },
+    "fist_llm_kb-0.2.2-py3-none-any.whl": {
+      "bytes": 94356,
+      "sha256": "2E39035B1FFF37FFCF6469B3D3898A44E5402893541C78339151193D96B6F63F"
+    }
+  }
+}

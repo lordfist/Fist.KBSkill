@@ -1,0 +1,15 @@
+{
+  "name": "fist-kb",
+  "version": "0.2.2",
+  "description": "Local project knowledge with guided folder setup and reviewed updates.",
+  "author": {"name": "Fist"},
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": {
+    "fist-kb": {
+      "type": "stdio",
+      "command": "powershell.exe",
+      "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PLUGIN_ROOT}/scripts/launch.ps1"]
+    }
+  }
+}

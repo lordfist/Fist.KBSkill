@@ -1,0 +1,5 @@
+# Runtime identities refer to exact source bytes. Do not convert line endings.
+* -text
+*.zip binary
+*.whl binary
+*.gz binary

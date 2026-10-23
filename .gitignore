@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.uv-cache/
+.pytest_cache/
+.coverage
+*.egg-info/
+build/
+.env
+.env.*
+!.env.example
+# Actual knowledge belongs outside the source/distribution repository.
+KnowledgeBase/
+# Local selections are written by guided setup, never committed as shared defaults.
+.fist-kb.json
+# dist contains compact generated downloads; marketplaces use this source root.
+

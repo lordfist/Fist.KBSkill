@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "product": "Fist KB",
+  "port_date": "2026-10-23",
+  "source_package_id": "seed-analyzer-v2-v07-b1d7e2e3e4a86cce",
+  "source_package_build": "v07 third build, 2026-10-23",
+  "source_capsule_sha256": "2580E6F756225FA5050ECD69C5A50C049D82DBB87EA8847A439DDC9A8B3DAC36",
+  "scope": "Source lineage and original byte identities, not a claim of unchanged deployed tools or inherited test results.",
+  "port_changes": [
+    "Python package-relative imports replace sibling-script imports.",
+    "An explicit data root replaces a root inferred from installed tool location.",
+    "Public commands isolate engine invocations in child Python processes.",
+    "Public canonical writes use an exclusive per-KB lock; reads and previews do not create locks, and stale locks are never removed automatically.",
+    "Initialization creates correctly bound empty data without agent-role instructions or a Seed installer.",
+    "Guest access and tool verification use the shipped Python package manifest instead of Seed installation receipts or owner-decision records.",
+    "Code in KnowledgeBase data directories is not loaded or executed."
+  ],
+  "source_modules": [
+    {"name": "consolidation_scope.py", "bytes": 11750, "sha256": "BA937139D66545D031272DE1A42B90E9CCDF861EEB65F1E10343E1571FA20839"},
+    {"name": "guest_access.py", "bytes": 22809, "sha256": "E4679B51CBE412B6EDC0629D098EB5366B276597694AF1E43C037CF1ACBFA8FD"},
+    {"name": "kb.py", "bytes": 124507, "sha256": "B7B19A82A63E82B92A0C82B7587D4017FD590B553A68567E0E05600EC638A721"},
+    {"name": "kb_client.py", "bytes": 21348, "sha256": "0D64C7DC94B3FE1DFC5C8253D27793B6A17528CF53755EBCB5A35A33E1597B88"},
+    {"name": "memory_view.py", "bytes": 10859, "sha256": "FDA32751DF015A27580E0E5E0161446CB7FABABCF33E45E5F542ED9B2D2714C5"},
+    {"name": "prepare.py", "bytes": 60340, "sha256": "59A494185A163914BD200576FBCDDAF08ACAC35B5BC5FCCE5282B316C6FF5A6B"},
+    {"name": "source_versions.py", "bytes": 9593, "sha256": "F28A978692C8F683FC260321A8A20AEE99C76205F9478F5AE601A0A3BD333768"},
+    {"name": "tool_inventory.py", "bytes": 5562, "sha256": "2554238938047857FB183A5DF74DDB08271383CB02E6E7F3038073AFCB0E4813"}
+  ]
+}

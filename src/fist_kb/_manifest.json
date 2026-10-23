@@ -1,0 +1,79 @@
+{
+  "format": 1,
+  "package": "fist-kb",
+  "version": "0.2.2",
+  "files": {
+    "__init__.py": {
+      "bytes": 84,
+      "sha256": "96DD89ED88491C2387EE2DE68FCF391B376EDCEDF9613688B37A0776B2E10005"
+    },
+    "__main__.py": {
+      "bytes": 49,
+      "sha256": "76FA916E93E0AE1A6C1BB51DCC0BCF289C014E9F760A47165F8A84401CCF41D7"
+    },
+    "_engine/__init__.py": {
+      "bytes": 68,
+      "sha256": "3361A862D6A02CB38EBA7822A080ED5273C1F7A9A92CBED66F39DD7278DC5D1B"
+    },
+    "_engine/consolidation_scope.py": {
+      "bytes": 11757,
+      "sha256": "DF9145EE35730DDCF14B0B71E1043380821453FD214CCEA15992ABA9D6E7E17D"
+    },
+    "_engine/guest_access.py": {
+      "bytes": 20803,
+      "sha256": "B2CC364EFC6AD5211FA54D80887BD4E774C68398769BE884FC12F509333CEC0E"
+    },
+    "_engine/kb.py": {
+      "bytes": 124530,
+      "sha256": "64F9315C68C3FDA88147E14A0F17EFAACBC2E176F79AC7246D4C84DD6EC86586"
+    },
+    "_engine/kb_client.py": {
+      "bytes": 21411,
+      "sha256": "0F71859C851CAB258695EE56296CA9937929F998DAE690921E8E757F9726C4BF"
+    },
+    "_engine/memory_view.py": {
+      "bytes": 10859,
+      "sha256": "FDA32751DF015A27580E0E5E0161446CB7FABABCF33E45E5F542ED9B2D2714C5"
+    },
+    "_engine/prepare.py": {
+      "bytes": 60258,
+      "sha256": "BB0775091142B2CC3392665DE80789448FC124D5862CA889DF24289FFE300947"
+    },
+    "_engine/source_versions.py": {
+      "bytes": 9593,
+      "sha256": "F28A978692C8F683FC260321A8A20AEE99C76205F9478F5AE601A0A3BD333768"
+    },
+    "_engine/tool_inventory.py": {
+      "bytes": 1101,
+      "sha256": "2755102D9D08DD4238415B401911DF5D1E5F95D78C5F1FDCB8295234B387E836"
+    },
+    "api.py": {
+      "bytes": 9330,
+      "sha256": "12F47418891B06A393554AC2E9BC4DBEBED00C7D2A10079AA3A081FAF058F846"
+    },
+    "cli.py": {
+      "bytes": 7199,
+      "sha256": "D55F005676948CC194CDB6C53E6C348DD8BAA19F0939B1695F23547E881628FF"
+    },
+    "initialize.py": {
+      "bytes": 3074,
+      "sha256": "82E408144087736466E1FACCCE807DC7CFFD333C8A1832FAED3430B50C32A241"
+    },
+    "mcp_server.py": {
+      "bytes": 11381,
+      "sha256": "AD7EA9844DD7B8CB626408ECAA55F6E3A373FD15265311D926BCAC19FADD29FF"
+    },
+    "process.py": {
+      "bytes": 5381,
+      "sha256": "5C2CFA95A1C5329CB2535543CDC46FAA2514567F00AA701067DA649D7BA16C6B"
+    },
+    "runtime.py": {
+      "bytes": 4841,
+      "sha256": "FC250F88B09195DB961BBB4B6D9C6D158D6BAF02BFE6A66F990348DFACFD0F63"
+    },
+    "setup.py": {
+      "bytes": 8462,
+      "sha256": "B823062982AE117F3AE979494C7C9055427136575316C868A3CFAB38778D4D8E"
+    }
+  }
+}
