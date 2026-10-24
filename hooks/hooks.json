@@ -1,0 +1,19 @@
+{
+  "description": "Fist KB: add the selected project's KB core to context at session start, resume, /clear and after compaction.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PLUGIN_ROOT}/scripts/session-context.ps1"],
+            "timeout": 30,
+            "statusMessage": "Loading Fist KB core"
+          }
+        ]
+      }
+    ]
+  }
+}

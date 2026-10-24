@@ -23,7 +23,8 @@ class KnowledgeBase:
             raise ValueError("Select an initialized KnowledgeBase directory")
 
     def run(self, arguments: list[str], *, timeout: float = 120) -> dict[str, Any]:
-        command = [sys.executable, "-X", "utf8", "-B", "-m", "fist_kb",
+        # -P keeps the caller's working directory off sys.path, so project files cannot shadow imports.
+        command = [sys.executable, "-X", "utf8", "-B", "-P", "-m", "fist_kb",
                    "--kb", str(self.root), *arguments]
         try:
             result = run_captured(command,

@@ -6,13 +6,13 @@ Examples use the installed `fist-kb` CLI. From a source checkout, prefix command
 
 For an agent using Fist KB as its working memory:
 
-1. Keep the complete current `core.json` in working context.
-2. Consult `kb_context` before answering or acting on every request, including short requests. Use the task's topics, or no topic for general orientation.
+1. Start from the complete current `core.json`: the plugin's session-start hook adds it at session start and after compaction; otherwise load it with `kb_core`.
+2. Consult `kb_context` at the start of a task, when the work moves to a different topic, and before answers or decisions that depend on project knowledge. Use the task's topics, or no topic for general orientation. Acknowledgements and follow-ups the retrieved material already answers need no new call.
 3. Read identified records when their detail matters. Search when the brief/routes do not answer the question, when evidence conflicts, and before concluding knowledge is missing.
 4. Within authorized maintenance, save material decisions, corrections, findings and outcomes as they occur. Check existing records first; avoid duplicate notes and routine chatter.
-5. Verify writes, refresh core and check the affected lookup. After compaction or a new session, reload the [operating skill](../skills/fist-kb/SKILL.md), complete core and relevant records before resuming.
+5. Verify writes and check the affected lookup; reload core only when a write edited core content. After compaction or a new session, make sure the [operating skill](../skills/fist-kb/SKILL.md) and complete core are present, then retrieve relevant records before resuming.
 
-This routine requires the host to supply the skill and the agent to follow it. Installation alone does not continuously inject core or capture conversations. Explicit read-only instructions still prohibit writes.
+This routine requires the host to supply the skill and the agent to follow it. The session-start hook adds core at session start, resume, `/clear` and compaction, not on every turn; nothing captures conversations. Explicit read-only instructions still prohibit writes.
 
 ## Choose the data directory
 
@@ -45,7 +45,15 @@ The returned `core` is complete and `core_is_projection` must be `false`. Here `
 
 MCP `kb_context` always returns a brief. Its `orientation` may omit core fields and routes, even with a larger budget. Use `kb_core` for complete core; a larger brief budget does not change the brief into full core.
 
-Load complete core on first use, after session/context loss, after switching KBs, and whenever its revision changes or its contents are no longer retained. Compare every request's context revision with the retained core. Refresh after successful writes; if concurrent work changes the revision during retrieval, refresh core and relevant records together. Keep core small enough to retain; put detailed evidence in records.
+Load complete core once per session and again after context loss, after switching KBs, or when a result shows a revision your own commits do not explain (another writer). Each commit changes core bookkeeping (revision, state hashes, timestamps); after your own commit, reload core only if the transaction edited core content such as routes, pinned IDs or experiment fields. If concurrent work changes the revision during retrieval, refresh core and relevant records together. Keep core small; put detailed evidence in records.
+
+### Session-start hook
+
+The Windows plugin runs `scripts/session-context.ps1` when a session starts, resumes, is cleared and after compaction (Claude Code `hooks/hooks.json`; Codex `hooks/codex-hooks.json`, after the user trusts it). It reads the project's `.fist-kb.json` and prints the selected KB's complete core with its project, KB root and revision. Hosts add that text to the model context. It only reads, prints nothing for a project without a selection, and one line for an unusable selection. Output stays within 6,000 bytes, below both hosts' hook-output caps; a larger core is replaced by a marked summary (`core_is_projection:true`) and an instruction to call `kb_core`. The hook uses the runtime the MCP launcher prepared and never downloads anything, so it adds nothing until the server has started once. The same text is available from the CLI:
+
+```text
+fist-kb session-context --project /absolute/path/to/project
+```
 
 ## Retrieve before expanding context
 
@@ -216,7 +224,7 @@ Once the route exists, this update changes its existing hints and retains its re
 
 To change an existing route's `record_ids`, merge the **complete intended array**, preserving every ID that should remain. To add IDs without replacing the existing array, use `core.append` with the path `/routes/startup_checks/record_ids` and the additional existing IDs. Do not append duplicates.
 
-After each commit, reload complete core and run:
+After each commit, read the changed core (this example edits routes) and run:
 
 ```text
 fist-kb --kb /absolute/path/to/project/KnowledgeBase context --topic startup_checks --brief --compact
@@ -233,7 +241,7 @@ Use the current revision and the actual drafted transaction path returned by the
 2. `kb_preview(transaction=PATH, expect_revision=REV, project=PROJECT)`.
 3. Inspect all pages. Continue with returned `next_offset`, `transaction_sha256` and `preview_time`; keep revision, budget and limit unchanged.
 4. `kb_apply(transaction=PATH, expect_revision=REV, transaction_sha256=SHA, project=PROJECT)`.
-5. Read back affected records, reload complete core, and check changed routes. Report IDs, revision and what was actually retained.
+5. Read back affected records, reload complete core when the transaction edited it, and check changed routes. Report IDs, revision and what was actually retained.
 
 The CLI equivalents for a drafted transaction are:
 

@@ -1,4 +1,4 @@
 """Fist KB: inspectable persistent knowledge for agents."""
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 

@@ -103,7 +103,7 @@ with patch.object(Path, 'unlink', failed_cleanup):
             # Keep the actual engine commit and CLI cleanup path. Only this
             # child's unlink of its disposable write lock is faulted.
             return run_captured([sys.executable, "-X", "utf8", "-B", "-c", wrapper,
-                                 str(lock), *command[6:]], env=env, timeout=timeout)
+                                 str(lock), *command[command.index("fist_kb") + 1:]], env=env, timeout=timeout)
         with patch("fist_kb.api.run_captured", side_effect=execute_faulted) as call:
             value = self.kb.apply(draft["transaction"], 1, preview["transaction_sha256"])
         call.assert_called_once()

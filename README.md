@@ -24,6 +24,8 @@ The Windows plugins provide guided setup:
 4. The agent validates the selection, loads the memory workflow and remembers the folder.
 5. Optionally enable project memory: the agent adds a small startup/recovery entry to your project instructions with your consent. Manual use remains available.
 
+In later sessions the plugin's session-start hook adds the selected KB's core to the agent's context, again after compaction, without repeating it on every turn. Codex asks you to trust the hook first.
+
 For project-file evidence, choose the project folder as the parent of `KnowledgeBase`. An external note store has a separate evidence boundary, which setup explains before accepting it. For an existing KB, choose `KnowledgeBase` itself or its parent folder.
 
 The first launch needs internet access to prepare the Python runtime and dependencies through uv. A fresh chat or client reload may be needed after installation.

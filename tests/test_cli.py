@@ -256,6 +256,38 @@ class PublicCliTests(unittest.TestCase):
         self.assertEqual(self.canonical(other_kb), beta_before)
         self.assertEqual(list(self.host.iterdir()), [])
 
+    def test_working_directory_modules_do_not_shadow_engine_imports(self):
+        # A console script or MCP server keeps its working directory off sys.path, but a
+        # `python -m` child would prepend it. A project folder holding json.py must not
+        # replace the standard library in any CLI, draft or API child process.
+        (self.host / "json.py").write_text('raise SystemExit("planted json.py was imported")\n', encoding="utf-8")
+
+        def run(*args, env=None):
+            result = subprocess.run([sys.executable, "-X", "utf8", "-B", "-P", *map(str, args)],
+                                    cwd=self.host, env=env or self.env, capture_output=True,
+                                    encoding="utf-8", timeout=45)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("planted", result.stdout + result.stderr)
+            return json.loads(result.stdout)
+
+        self.assertTrue(run("-m", "fist_kb", "--kb", self.kb, "validate", "--compact")["ok"])
+        request = self.transaction({"note": "Working-directory isolation", "new_records": [fact()]}, "request")
+        draft = self.kb / "transactions" / "draft.json"
+        self.assertTrue(run("-m", "fist_kb", "--kb", self.kb, "draft", request, "--output", draft,
+                            "--expect-revision", 1, "--compact")["draft_only"])
+        preview = run("-m", "fist_kb", "--kb", self.kb, "apply", draft, "--expect-revision", 1,
+                      "--dry-run", "--preview-values", "--compact")
+        run("-m", "fist_kb", "--kb", self.kb, "apply", draft, "--expect-revision", 1,
+            "--expect-transaction-sha256", preview["transaction_sha256"], "--compact")
+        core = run("-c", "import json, sys\nfrom fist_kb.api import KnowledgeBase\n"
+                   "print(json.dumps(KnowledgeBase(sys.argv[1]).core()))", self.kb)
+        self.assertIs(core["core_is_projection"], False, core)
+        self.assertEqual(core["kb_revision"], 2)
+        checked = run("-c", "import json\nfrom fist_kb._engine.kb_client import call_tool\n"
+                      "print(json.dumps(call_tool('kb.py', ['validate', '--compact'], expected={'ok': bool})))",
+                      env={**self.env, "FIST_KB_ROOT": str(self.kb)})
+        self.assertTrue(checked["ok"], checked)
+
     def test_data_tools_directory_is_never_used_as_runtime_code(self):
         self.apply({"upsert_records": [fact(statement="Package implementation is selected")]})
         data_tools = self.kb / "tools"

@@ -29,8 +29,9 @@ def refresh_manifest(root: Path = ROOT) -> dict:
 def plugin_files(root: Path = ROOT) -> list[Path]:
     files = [root / item for item in (
         "plugin.json", "mcp.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
-        "pyproject.toml", "uv.lock", "LICENSE", "README.md", "PROVENANCE.json", "VALIDATION.md", "scripts/launch.ps1")]
-    for directory in ("src", "skills", "docs"):
+        "pyproject.toml", "uv.lock", "LICENSE", "README.md", "PROVENANCE.json", "VALIDATION.md", "scripts/launch.ps1",
+        "scripts/session-context.ps1")]
+    for directory in ("src", "skills", "docs", "hooks"):
         files.extend(p for p in (root / directory).rglob("*") if p.is_file()
                      and "__pycache__" not in p.parts and p.suffix != ".pyc")
     return sorted(files)

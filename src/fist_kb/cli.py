@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kb", help="Exact KnowledgeBase data directory (or set FIST_KB_ROOT)")
     parser.add_argument("--project-mode", action="store_true", help="MCP uses saved per-project selections, ignoring FIST_KB_ROOT")
     parser.add_argument("--version", action="store_true", help="Show the installed package version")
-    parser.add_argument("command", nargs="?", help="init, mcp, draft, prepare, checkpoint, guest, inventory, or a native KB command")
+    parser.add_argument("command", nargs="?", help="init, mcp, session-context, draft, prepare, checkpoint, guest, inventory, or a native KB command")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if args.version:
@@ -100,6 +100,21 @@ def main(argv: list[str] | None = None) -> int:
                 allow_separate_store=options.allow_separate_store)
             print(json.dumps(value, ensure_ascii=False))
             return 0 if value.get("ok", False) else 2
+        if args.command == "session-context":
+            subparser = argparse.ArgumentParser(prog="fist-kb session-context", allow_abbrev=False,
+                description="Print the selected project's core as plain text for a host session-start hook.")
+            subparser.add_argument("--project", help="Project directory (default: CLAUDE_PROJECT_DIR, then the working directory)")
+            options = subparser.parse_args(args.arguments)
+            from .session_context import hook_project, session_context
+            try:
+                text = session_context(hook_project(options.project))
+            except (OSError, ValueError, RuntimeError) as error:
+                # A session-start hook must not disturb the session: add no context, explain on stderr.
+                print(f"Fist KB session context unavailable: {error}", file=sys.stderr)
+                return 0
+            if text:
+                print(text)
+            return 0
         root = configured_root(args.kb)
         if not root.is_dir():
             raise ValueError(f"KnowledgeBase directory does not exist: {root}")
@@ -123,7 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         mutating = (not any(flag in rest for flag in ("-h", "--help")) and
                     (module == "kb" and rest[0] == "apply" and "--dry-run" not in rest
                      or module == "prepare" and bool(rest) and rest[0] == "prepare"))
-        return _run_engine([sys.executable, "-X", "utf8", "-B", "-m", f"fist_kb._engine.{module}", *rest],
+        # -P keeps the caller's working directory off sys.path, so project files cannot shadow imports.
+        return _run_engine([sys.executable, "-X", "utf8", "-B", "-P", "-m", f"fist_kb._engine.{module}", *rest],
                            env, root, mutating=mutating)
     except (OSError, ValueError, RuntimeError) as error:
         print(json.dumps({"ok": False, "error": str(error), "code": getattr(error, "code", None) or

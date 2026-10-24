@@ -1,5 +1,18 @@
 # Verification
 
+## 0.2.3 context and isolation changes - 2026-10-24
+
+Run on Linux only (Python 3.13.16, locked dependencies; lockfile regenerated with uv 0.13.5).
+
+- All 50 source tests passed: the previous 42, one working-directory isolation test and seven session-context tests. One of these runs `launch.ps1` (with a stand-in uv) and `session-context.ps1` under PowerShell 7.4.6 and checks that the hook finds the launcher's runtime and prints the complete core; it is skipped where `pwsh` is unavailable.
+- Mutation controls failed as intended: removing `-P` from each of the three child launches (CLI, API, `kb_client.call_tool`), changing the hook's environment key, dropping the 6,000-byte check, or printing output without a prepared runtime.
+- The Codex Windows hook command, with `pwsh` in place of `powershell.exe`, printed the complete core when run through `sh` and through PowerShell 7 as the outer shell.
+- `claude plugin validate` passed with the two earlier warnings (no marketplace description, no icon). An isolated Claude Code 2.1.309 install lists 2 skills, 1 SessionStart hook and 1 MCP server; the working skill is about 2.8k tokens when invoked.
+- The demo passed and the release outputs were rebuilt on Linux.
+- Basis for the consultation change: on a 47-record copy of a real KB, the full core was about 850 estimated tokens and each default brief about 1,900. 0.2.2 asked for a brief before every request.
+
+**Qualification limit:** not run on Windows: the hooks inside Claude Code or Codex, the Codex trust review, cmd.exe or Windows PowerShell 5.1 handling of the commands, re-injection after a real compaction, and hook timing on first launch. Agent behaviour under the new consultation rule was not measured.
+
 ## 0.2.2 review corrections - 2026-10-24
 
 - All 42 source tests passed across six suites: 11 setup, 4 review-specific API, 3 fixed MCP, 1 project MCP, and 23 CLI/process checks.

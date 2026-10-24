@@ -44,7 +44,7 @@ After explicit opt-in, append this small block or update the one existing block.
 
 Use Fist KB as this project's working memory. At session start and after context loss, call kb_status for the exact project with verify_runtime=true, then load the complete installed fist-kb working skill through the host or its reported operating_skill_path. Do not rely on the skill description alone.
 
-Keep complete current core from kb_core in context. Consult kb_context before every request; use kb_get for known records and kb_search when routes or briefs are insufficient. Reload core after revision changes or context loss.
+Use the complete current core from the plugin's session-start hook or kb_core. Consult kb_context at task start, on topic changes and before knowledge-dependent decisions; use kb_get for known records and kb_search when routes or briefs are insufficient. Reload core after context loss, a KB switch or another writer's revision change.
 
 Routine reads, validation and reviewed record/core updates in this project's selected KB are authorized. Save material decisions, findings and corrections as they arise; preserve their evidence, uncertainty and old lookup paths. Explicit read-only instructions and stop decisions take precedence. Source preparation, peer access and unrelated actions need their own applicable scope.
 
@@ -57,6 +57,14 @@ Read the resulting entry back and check that the host will discover that file wi
 The user may choose **manual use** instead: keep the service and invoke the working skill when wanted, with no persistent file edits. Report that automatic startup/recovery has not been configured. To disable the opt-in later, remove only the owned delimited block on request; keep unrelated instructions and all knowledge.
 
 This entry authorizes only the stated memory maintenance. It installs no agent role, background process, automatic transcript capture or guarantee of compliance.
+
+## Session-start core hook
+
+The plugin adds the selected project's complete core to the agent's context when a session starts, resumes, is cleared and after compaction. It does not run on every turn. Claude Code loads `hooks/hooks.json` automatically. Codex loads `hooks/codex-hooks.json` through the manifests and runs it only after the user reviews and trusts the hook; OpenAI does not list plugins with lifecycle hooks in its public plugin directory.
+
+Both entries run `scripts/session-context.ps1`, which is read-only. It uses the runtime the MCP launcher already prepared, never installs or downloads anything, and exits quietly when that runtime does not exist yet. A project without `.fist-kb.json` gets no output; an unusable selection gets one line. Output stays within 6,000 bytes; a larger core becomes a marked summary with an instruction to call `kb_core`. Like the launcher, the hook is Windows-only; on other platforms the Codex entry is a no-op. Codex does not document which shell runs a Windows hook command, so that command contains no shell variable syntax and the plugin root is read inside PowerShell; it was tested through `sh` and PowerShell 7, not yet through cmd or Windows PowerShell 5.1. The project is Claude Code's project directory, or for Codex the session's working directory, so start Codex in the folder that holds `.fist-kb.json`.
+
+To stop it, disable hooks in the host (Claude Code `disableAllHooks`, which affects all hooks) or leave the Codex hook untrusted. The skill then loads core through `kb_core`.
 
 ## Runtime and tools
 
@@ -86,6 +94,6 @@ Direct Python MCP can be configured on other Python platforms; the shipped deskt
 
 Verify package integrity once after installation/update and on relevant recovery, then load full core and read context. In disposable data, check a reviewed write, restart and retrieval, two project bindings, fixed-mode status, cancellation and explicit separate-store boundaries. Source registration/preparation uses the [CLI evidence reference](EVIDENCE.md).
 
-Keep service checks separate from actual agent behavior. A complete host check also verifies that a fresh ordinary request loads the operating contract, a correction is recovered, and compaction preserves the current objective and stop boundary. See [validation scope](../VALIDATION.md); tool discovery does not prove those behaviors.
+Keep service checks separate from actual agent behavior. A complete host check also verifies that a fresh session shows the hook's core for the selected project and that it reappears after compaction, that a fresh ordinary request loads the operating contract, a correction is recovered, and compaction preserves the current objective and stop boundary. See [validation scope](../VALIDATION.md); tool discovery does not prove those behaviors.
 
 Official loading references: [OpenAI skill activation](https://developers.openai.com/plugins/concepts/skills), [Codex project instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md), [Claude Code project memory](https://code.claude.com/docs/en/memory), and [local plugin packaging](https://developers.openai.com/plugins/build/plugins).

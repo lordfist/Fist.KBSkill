@@ -13,7 +13,8 @@
     "Public canonical writes use an exclusive per-KB lock; reads and previews do not create locks, and stale locks are never removed automatically.",
     "Initialization creates correctly bound empty data without agent-role instructions or a Seed installer.",
     "Guest access and tool verification use the shipped Python package manifest instead of Seed installation receipts or owner-decision records.",
-    "Code in KnowledgeBase data directories is not loaded or executed."
+    "Code in KnowledgeBase data directories is not loaded or executed.",
+    "Engine and API child processes run Python with -P, so the caller's working directory cannot shadow imports (kb_client.py since 0.2.3)."
   ],
   "source_modules": [
     {"name": "consolidation_scope.py", "bytes": 11750, "sha256": "BA937139D66545D031272DE1A42B90E9CCDF861EEB65F1E10343E1571FA20839"},

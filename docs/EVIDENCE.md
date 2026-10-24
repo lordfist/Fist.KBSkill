@@ -54,7 +54,7 @@ fist-kb --kb D:/ExampleApp/KnowledgeBase apply D:/ExampleApp/KnowledgeBase/trans
 fist-kb --kb D:/ExampleApp/KnowledgeBase get SRC-0001 --metadata-only --compact
 ```
 
-Review every preview page, pin the transaction hash and revision, and inspect `write_outcome` after failures. Deep checks may read all registered originals and preparations; their scope must be authorized too. Refresh core after a successful write. Link findings to registered IDs using record `source_refs`; add actual locators/coverage to the finding where needed.
+Review every preview page, pin the transaction hash and revision, and inspect `write_outcome` after failures. Deep checks may read all registered originals and preparations; their scope must be authorized too. After a successful write, read back the changed objects; reload core only if the write edited core content. Link findings to registered IDs using record `source_refs`; add actual locators/coverage to the finding where needed.
 
 A URL source uses `{"type":"url","url":"https://example.org/spec"}` as its locator. Registration does not fetch the page or verify its claims; local preparation accepts file sources only.
 
@@ -67,7 +67,7 @@ fist-kb --kb D:/ExampleApp/KnowledgeBase search "startup" --compact
 fist-kb --kb D:/ExampleApp/KnowledgeBase get SRC-0001 --compact
 ```
 
-**`prepare SRC-0001` writes immediately**: it creates a derived representation under `KnowledgeBase/prepared` and updates source metadata/core revision. It is not a dry run or a transaction draft. Use it only within authorized preparation scope. It checks source identity before and after parsing and refuses stale originals. It has no `--expect-revision` option; it checks captured state hashes before replacing files. Inspect its returned coverage, revision and `write_outcome`, then refresh core.
+**`prepare SRC-0001` writes immediately**: it creates a derived representation under `KnowledgeBase/prepared` and updates source metadata/core revision. It is not a dry run or a transaction draft. Use it only within authorized preparation scope. It checks source identity before and after parsing and refuses stale originals. It has no `--expect-revision` option; it checks captured state hashes before replacing files. Inspect its returned coverage, revision and `write_outcome`; the new revision is your own write and needs no core reload.
 
 Preparation parses supported text/code, HTML, DOCX, PDF, CSV and ODS formats without executing their contents. PDF extraction requires the optional `pdf` dependency. Coverage is format-dependent; images, OCR, tables and formulas may be omitted or transformed. A `prepared` or `partial` status never proves full semantic coverage. Existing valid preparations are verified without rewriting unless `--upgrade` is explicitly supplied for an authorized replacement.
 

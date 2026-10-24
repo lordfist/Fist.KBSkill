@@ -147,7 +147,7 @@ def call_tool(
         raise ValueError("tool must resolve to the named regular file in this module's directory")
     if not sys.executable:
         raise ValueError("the current Python executable is unavailable")
-    command = [sys.executable, "-X", "utf8", "-B", "-m",
+    command = [sys.executable, "-X", "utf8", "-B", "-P", "-m",
                "fist_kb._engine." + target.stem, *arguments]
     try:
         completed = subprocess.run(

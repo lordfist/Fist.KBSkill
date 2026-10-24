@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fist-llm-kb"
-version = "0.2.2"
+version = "0.2.3"
 description = "Inspectable, file-based knowledge for AI agents, with a CLI and local MCP tools"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,5 +31,5 @@ fist-kb = "fist_kb.cli:main"
 packages = ["src/fist_kb"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/tests", "/scripts", "/docs", "/examples", "/skills", "/.agents", "/.claude-plugin", "/.codex-plugin", "/plugin.json", "/mcp.json", "/.gitignore", "/.gitattributes", "/README.md", "/LICENSE", "/CHANGELOG.md", "/PROVENANCE.json", "/pyproject.toml", "/uv.lock"]
+include = ["/src", "/tests", "/scripts", "/docs", "/examples", "/skills", "/hooks", "/.agents", "/.claude-plugin", "/.codex-plugin", "/plugin.json", "/mcp.json", "/.gitignore", "/.gitattributes", "/README.md", "/LICENSE", "/CHANGELOG.md", "/PROVENANCE.json", "/pyproject.toml", "/uv.lock"]
 

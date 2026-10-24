@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3
+
+- Add a read-only session-start hook for Claude Code and Codex (Windows): at session start, resume, `/clear` and after compaction it adds the selected project's complete core to context, within 6,000 bytes, or a marked summary when core is larger. Nothing is added on other turns or for projects without a KB selection. Codex runs it after the user trusts it.
+- Replace "consult kb_context before every request" with consultation at task start, on topic changes and before knowledge-dependent decisions. Reload core after context loss, a KB switch or another writer's revision change, and after your own write only when it edited core content.
+- Run engine and API child processes with `-P`, so a module such as `json.py` in the caller's working directory can no longer replace a standard-library import.
+- Add `fist-kb session-context`. Projects that installed the 0.2.2 project-memory block keep its every-request wording until setup updates that block with consent.
+
 ## 0.2.2
 
 - Add complete, bounded, revision-aware core retrieval through MCP.
