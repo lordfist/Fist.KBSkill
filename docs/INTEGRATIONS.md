@@ -2,25 +2,51 @@
 
 The repository root is the shared Windows plugin. Both marketplace files point to it. The combined ZIP contains both client manifests, Python code, skills and documentation.
 
-## Codex: install the local checkout
+## Install from GitHub (Windows)
 
-Register the checkout and install through the client:
+Requires Git and the chosen client. The repository supplies both marketplace manifests; no separate source checkout is needed.
+
+### Claude Code
+
+Run inside Claude Code:
+
+```text
+/plugin marketplace add lordfist/Fist.KBSkill
+/plugin install fist-kb@fist-kb-local
+```
+
+Choose the intended installation scope when prompted. The equivalent shell commands are `claude plugin marketplace add lordfist/Fist.KBSkill` and `claude plugin install fist-kb@fist-kb-local`.
+
+### Codex
+
+Run in a terminal:
+
+```text
+codex plugin marketplace add lordfist/Fist.KBSkill
+codex plugin add fist-kb@fist-kb-local
+```
+
+The marketplace name is `fist-kb-local` for both clients, including when installed from GitHub.
+
+Start a new chat in the intended project, reload the client if prompted, and ask **“Set up Fist KB for this project.”** The shipped launcher uses `powershell.exe`; unchanged plugin installation is Windows-specific. Direct Python MCP on another platform is a separate integration.
+
+## Install a local checkout
+
+For development or a downloaded source checkout, replace the GitHub source in the marketplace command with the checkout's absolute path. Keep the same plugin selector:
 
 ```text
 codex plugin marketplace add /absolute/path/to/checkout
 codex plugin add fist-kb@fist-kb-local
 ```
 
-Start a new chat in the intended project and ask **“Set up Fist KB for this project.”** Reload the client when required after plugin changes.
-
-## Claude Code: install the local checkout
+Inside Claude Code:
 
 ```text
 /plugin marketplace add /absolute/path/to/checkout
 /plugin install fist-kb@fist-kb-local
 ```
 
-Choose the intended installation scope, reload when prompted, and ask **“Set up Fist KB for this project.”** The shipped launcher uses `powershell.exe`; unchanged plugin installation is Windows-specific. Direct Python MCP on another platform is a separate integration.
+Quote paths that contain spaces. Use the normal setup flow above after installation.
 
 ## Setup and storage
 

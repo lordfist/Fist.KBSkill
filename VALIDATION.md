@@ -1,5 +1,17 @@
 # Verification
 
+## GitHub installation on Windows - 2026-10-24
+
+Tested the published 0.2.3 package at commit `4f55cac66aebda4bcbdee542cdb00ee52fed0edc`, using Codex CLI `0.164.0-alpha.11.1` and Claude Code `2.1.304` in disposable, separate client configuration directories.
+
+- Both clients added `lordfist/Fist.KBSkill` directly from GitHub, installed `fist-kb@fist-kb-local`, and listed version 0.2.3 as enabled. Claude's shell equivalents of the documented in-session commands were exercised.
+- Each installed copy started through its own declared Windows MCP launcher. All ten tools were available; package integrity passed; explicit-path setup created a disposable KB; `kb_core` returned the complete core matching its saved file.
+- A separate Codex app server discovered all ten tools from the GitHub-installed plugin with no tool error, without starting a chat or making a model call.
+- Claude manifest validation passed with an advisory about the missing marketplace description. The check also identified the missing README install line corrected in this documentation update.
+- No existing client profile or agent KB was changed. A temporary Git process briefly held a cleanup lock; after it exited, the exact test folder was removed and its absence verified.
+
+**Scope:** this verifies GitHub acquisition, installation, tool startup and explicit-path KB setup on Windows. It does not test Claude's interactive slash-command panel, the folder picker, hook trust or post-compaction injection in an actual chat. The earlier hook qualification limits below still apply.
+
 ## 0.2.3 context and isolation changes - 2026-10-24
 
 Run on Linux only (Python 3.13.16, locked dependencies; lockfile regenerated with uv 0.13.5).
@@ -55,7 +67,7 @@ The full source suite ran on Python 3.12.14. The first-launch test downloaded an
 
 ## Limits
 
-The current chat did not gain the newly installed plugin tools without a new chat/reload. A complete fresh-chat onboarding check remains for the actual Codex app. Claude Code host installation was not tested; the launcher and engine are shared, but host behaviour is a separate check. Linux/macOS plugin launchers, optional PDF preparation and other Python versions were not qualified.
+The current chat did not gain the newly installed plugin tools without a new chat/reload. A complete fresh-chat onboarding check remains for the actual Codex app. Claude Code host installation was not tested for the 0.2.0 baseline; the later GitHub installation check above covers 0.2.3 installation and tool startup, not interactive agent behaviour. Linux/macOS plugin launchers, optional PDF preparation and other Python versions were not qualified.
 
 ## Layout and history
 
