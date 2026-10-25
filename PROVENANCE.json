@@ -14,7 +14,8 @@
     "Initialization creates correctly bound empty data without agent-role instructions or a Seed installer.",
     "Guest access and tool verification use the shipped Python package manifest instead of Seed installation receipts or owner-decision records.",
     "Code in KnowledgeBase data directories is not loaded or executed.",
-    "Engine and API child processes run Python with -P, so the caller's working directory cannot shadow imports (kb_client.py since 0.2.3)."
+    "Engine and API child processes run Python with -P, so the caller's working directory cannot shadow imports (kb_client.py since 0.2.3).",
+    "kb.py adds match strength, coverage-weighted scores and the full-query route bonus from a later source change on top of the v07 third build (0.3.0); match sets are unchanged."
   ],
   "source_modules": [
     {"name": "consolidation_scope.py", "bytes": 11750, "sha256": "BA937139D66545D031272DE1A42B90E9CCDF861EEB65F1E10343E1571FA20839"},

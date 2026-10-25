@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "fist-kb",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Local project knowledge with guided folder setup, bounded recall and reviewed updates.",
   "author": {"name": "Fist"},
   "license": "MIT",

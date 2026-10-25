@@ -64,7 +64,7 @@ fist-kb --kb /absolute/path/to/project/KnowledgeBase get FACT-0001 --compact
 fist-kb --kb /absolute/path/to/project/KnowledgeBase get FACT-0001 --fields statement uncertainty current_resolution --compact
 ```
 
-Use exact topic routes and record IDs when known. Search uses lexical matching, so try the specific name/configuration and useful alternate wording. A brief is a projection: inspect `detail_required`, `truncated_fields`, hidden matches and omitted-match pointers, then retrieve material detail. Search before declaring absence; an empty query or first page is insufficient.
+Use exact topic routes and record IDs when known. Search uses lexical matching, so try the specific name/configuration and useful alternate wording. Results are ordered by match quality: whole words before the start of a longer word before text inside a word, and records that match more of the query words first. A route lifts its records only when the whole query names it. Ordering never removes a match. A brief is a projection: inspect `detail_required`, `truncated_fields`, hidden matches and omitted-match pointers, then retrieve material detail. Search before declaring absence; an empty query or first page is insufficient.
 
 Historical fields are excluded from normal matching; use `--history` when old wording matters. Rank, recency and status do not establish authority or truth. A `resolved` owner decision may still apply; inspect its meaning and any current correction.
 

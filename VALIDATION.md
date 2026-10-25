@@ -1,5 +1,17 @@
 # Verification
 
+## 0.3.0 search ordering - 2026-10-25
+
+Run on Linux only (Python 3.13.16, locked dependencies; lockfile regenerated with uv 0.13.5).
+
+- All 59 source tests passed, including the new `test_matching` (9 tests) and the PowerShell session-start check under PowerShell 7.4.6.
+- `test_matching` on 0.2.3 source: the 5 ordering tests fail as expected; its controls pass, including the pinned 0.2.3 search and brief match sets for 26 and 7 queries.
+- On a copy of a real 54-record KB, 30 queries through the public API returned the same search matches and brief match counts under 0.2.3 and 0.3.0; 20 came back in a different order.
+- The engine change is identical to the source candidate it was ported from, which passed that package's own 96-test suite, mutation controls for each rule, and an unchanged-match comparison over 96 queries on three corpora.
+- The demo passed and the release outputs were rebuilt on Linux.
+
+**Qualification limit:** not run on Windows or inside Claude Code or Codex. The route bonus for partly named routes (10) and the match strengths (1, 2/3, 1/3) are reasoned choices, not tuned on user data.
+
 ## GitHub installation on Windows - 2026-10-24
 
 Tested the published 0.2.3 package at commit `4f55cac66aebda4bcbdee542cdb00ee52fed0edc`, using Codex CLI `0.164.0-alpha.11.1` and Claude Code `2.1.304` in disposable, separate client configuration directories.

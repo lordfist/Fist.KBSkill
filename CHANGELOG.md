@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Order search, context, brief and evidence results by match quality: a whole word (or its plural or word form) before the start of a longer word before text inside a word, and records matching more of the query words first. `guard` now lists "guard clauses" before "safeguards"; a hash prefix and `plan` -> `planning` still match.
+- Give the full route bonus only when every query word names the route. One route word in a longer query ("malformed tool input" with a `kb-tools` route) no longer lifts the whole route; its records stay in the results, ordered by their content.
+- Matches are unchanged: the same records are found as in 0.2.3, only their order and scores change. A test pins the 0.2.3 match sets.
+
 ## 0.2.3
 
 - Add a read-only session-start hook for Claude Code and Codex (Windows): at session start, resume, `/clear` and after compaction it adds the selected project's complete core to context, within 6,000 bytes, or a marked summary when core is larger. Nothing is added on other turns or for projects without a KB selection. Codex runs it after the user trusts it.

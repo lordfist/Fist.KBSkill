@@ -705,16 +705,61 @@ def term_in(term: str, text: str) -> bool:
     return bool(form and form.search(text))
 
 
+# Match strength orders matches; term_in alone decides whether text matches, so every match is kept.
+FULL_MATCH, WORD_START_MATCH, INSIDE_WORD_MATCH = 1.0, 2 / 3, 1 / 3
+
+
+@functools.lru_cache(maxsize=512)
+def whole_word(term: str) -> re.Pattern[str]:
+    """The term as a whole word or with a plural ending; _ - . / and other non-letters end a word."""
+    return re.compile(r"(?<![^\W_])" + re.escape(term) + r"(?:e?s)?(?![^\W_])")
+
+
+@functools.lru_cache(maxsize=512)
+def word_start(term: str) -> re.Pattern[str]:
+    return re.compile(r"(?<![^\W_])" + re.escape(term))
+
+
+def match_strength(term: str, text: str) -> float:
+    """1 for a whole word, plural or word form ("guard" in "guard clauses"); 2/3 at the start of a longer word
+    ("plan" in "planning", a hash prefix); 1/3 only inside a word ("guard" in "safeguards"); 0 when absent."""
+    if not term_in(term, text):
+        return 0.0
+    form = word_form(term)
+    if whole_word(term).search(text) or (form and form.search(text)):
+        return FULL_MATCH
+    if word_start(term).search(text):
+        return WORD_START_MATCH
+    return INSIDE_WORD_MATCH
+
+
+def match_score(found: float, total: int, weighted: float) -> int:
+    """Coverage-weighted relevance: records that match more of the query words rank first. found is the summed
+    match strength of the distinct query words; weighted the field-weighted strengths."""
+    if not found or not total:
+        return 0
+    coverage = found / total
+    score = round((weighted + found * 30) * coverage * coverage)
+    if total > 1 and found == total:
+        score += 40
+    return max(score, 1)
+
+
 def term_position(term: str, text: str) -> int:
-    position = text.find(term)
-    form = word_form(term) if position < 0 else None
-    match = form.search(text) if form else None
-    return match.start() if match else position
+    """Where a snippet should start: the strongest occurrence of the term."""
+    form = word_form(term)
+    for match in (whole_word(term).search(text), form.search(text) if form else None, word_start(term).search(text)):
+        if match:
+            return match.start()
+    return text.find(term)
 
 
 def score_value(value: Any, terms: list[str]) -> int:
     blob = text_blob(value)
-    return sum(max(blob.count(term), len(form.findall(blob)) if (form := word_form(term)) else 0) for term in terms)
+    unique = list(dict.fromkeys(terms))
+    strengths = {term: match_strength(term, blob) for term in unique}
+    counts = {term: max(blob.count(term), len(form.findall(blob)) if (form := word_form(term)) else 0) for term in unique}
+    return match_score(sum(strengths.values()), len(unique), sum(counts[term] * strengths[term] for term in unique))
 
 
 def historical_field(key: str) -> bool:
@@ -745,20 +790,26 @@ def rank_record(row: dict[str, Any], terms: list[str], *, history: bool = False)
     weights = {"id": 12, "title": 8, "statement": 6, "tags": 8, "topics": 8,
                "current_resolution": 6, "resolution_notes": 4, "applicability": 5,
                "action": 5, "exceptions": 3, "limits": 3}
-    matches, covered, score = [], set(), 0
+    unique = list(dict.fromkeys(terms))
+    matches, best, weighted = [], {}, 0.0
     for key, value in current_view(row, history=history, bookkeeping=False).items():
-        found = {term for term in set(terms) if term_in(term, text_blob(value))}
+        blob = text_blob(value)
+        found = {term: strength for term in unique if (strength := match_strength(term, blob))}
         if found:
             matches.append(key)
-            covered.update(found)
-            score += len(found) * weights.get(key, 1)
-    return score + len(covered) * 30, matches
+            weighted += sum(found.values()) * weights.get(key, 1)
+            for term, strength in found.items():
+                best[term] = max(best.get(term, 0.0), strength)
+    return match_score(sum(best.values()), len(unique), weighted), matches
 
 
 def resolution_ids(row: dict[str, Any]) -> list[str]:
     resolution = row.get("current_resolution")
     ids = resolution.get("record_ids") if isinstance(resolution, dict) else None
     return [value for value in ids if isinstance(value, str)] if isinstance(ids, list) else []
+
+
+ROUTE_BONUS, PARTIAL_ROUTE_BONUS = 300, 10
 
 
 def route_scores(core: dict[str, Any], topics: list[str], terms: list[str]) -> dict[str, int]:
@@ -768,10 +819,17 @@ def route_scores(core: dict[str, Any], topics: list[str], terms: list[str]) -> d
         # Partial route matches use whole label words or a 4+ character word prefix, so short
         # query words such as "is" or "it" cannot match inside labels like "genesis" or "open_items".
         words = [word for label in labels for word in re.findall(r"[^\W_]+", label)]
-        bonus = 10000 if any(topic in labels for topic in topics) else 300 if any(
-            term in labels or any(word == term or (len(term) >= 4 and word.startswith(term)) for word in words)
-            for term in terms
-        ) else 0
+
+        def names(term: str) -> bool:
+            return term in labels or any(word == term or (len(term) >= 4 and word.startswith(term)) for word in words)
+
+        # The full bonus needs every query word to name the route (plural allowed), so "malformed tool input"
+        # no longer lifts a whole "kb-tools" route. A route that only some words name keeps a small bonus:
+        # its records stay matches, ranked by their content.
+        named = [term for term in terms if names(term)]
+        bonus = 10000 if any(topic in labels for topic in topics) else 0 if not named else (
+            ROUTE_BONUS if all(names(term) or term + "s" in words or term + "es" in words for term in terms)
+            else PARTIAL_ROUTE_BONUS)
         for identifier in route.get("record_ids", []):
             result[identifier] = max(result.get(identifier, 0), bonus)
     return result
@@ -1444,7 +1502,7 @@ def command_brief(args: argparse.Namespace, core: dict[str, Any], records: list[
         def group(record_id: str) -> tuple[int, float]:
             if record_id in exact or record_id.casefold() in topics:
                 return 0, 0.0
-            if partial.get(record_id) or covered.get(record_id, set()) - common:
+            if partial.get(record_id, 0) >= ROUTE_BONUS or covered.get(record_id, set()) - common:
                 return 1, -rarity.get(record_id, 0.0)
             if record_id in current_work:
                 return 2, float(record_id not in matches)

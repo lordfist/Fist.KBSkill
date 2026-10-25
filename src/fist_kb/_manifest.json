@@ -1,11 +1,11 @@
 {
   "format": 1,
   "package": "fist-kb",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "files": {
     "__init__.py": {
       "bytes": 84,
-      "sha256": "F5FA051AB4371203D2FAFD27382E4EF2D594C12EA826C00AEF6209159A030163"
+      "sha256": "D8C9F4360CE8097B0A451A720C4849A3DC1710196FF4F6B135F1641DAFBA76F1"
     },
     "__main__.py": {
       "bytes": 49,
@@ -24,8 +24,8 @@
       "sha256": "B2CC364EFC6AD5211FA54D80887BD4E774C68398769BE884FC12F509333CEC0E"
     },
     "_engine/kb.py": {
-      "bytes": 124530,
-      "sha256": "64F9315C68C3FDA88147E14A0F17EFAACBC2E176F79AC7246D4C84DD6EC86586"
+      "bytes": 127259,
+      "sha256": "F4EE6ECC7F2BC122CD91B074ADA64BC690CBA0DDE868A9404E65F3F6A41CE9D5"
     },
     "_engine/kb_client.py": {
       "bytes": 21417,
