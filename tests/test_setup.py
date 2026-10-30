@@ -1,15 +1,21 @@
-"""Folder setup, cancellation, preserved existing data and project isolation."""
+"""Folder setup, cancellation, preserved existing data, project isolation and 0.3.x migration."""
 import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from fist_kb.api import KnowledgeBase
+from fist_kb.api import KnowledgeBase, LegacyKnowledgeBase
 from fist_kb.initialize import initialize
 from fist_kb.setup import configure, status, read_binding
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from legacy_fixture import legacy_kb  # noqa: E402
+
+STATE = ("core.json", "records.jsonl", "journal.jsonl", "sources.json")
 
 
 class SetupTests(unittest.TestCase):
@@ -125,31 +131,69 @@ class SetupTests(unittest.TestCase):
         inside = self.storage / "evidence.cs"
         external.write_text("// project source\n", encoding="utf-8")
         inside.write_text("// explicitly in the store evidence root\n", encoding="utf-8")
-        canonical = {name: (root / name).read_bytes() for name in ("core.json", "records.jsonl", "sources.json")}
-        def source_request(path, name):
-            raw = path.read_bytes()
-            value = {"actor": "fixture", "note": "Synthetic source boundary check",
-                     "upsert_sources": [{"source_id": "SRC-0001", "locator": {"type": "file", "path": str(path)},
-                                         "sha256": hashlib.sha256(raw).hexdigest().upper(), "size_bytes": len(raw)}],
-                     "upsert_records": [], "core_patch": {}}
-            target = root / "transactions" / name
-            target.write_text(json.dumps(value), encoding="utf-8")
-            return target
-        rejected = source_request(external, "outside.json")
-        preview = api.run(["apply", str(rejected), "--expect-revision", "1", "--dry-run", "--preview-values", "--compact"])
-        self.assertFalse(preview.get("ok", True), preview)
+        canonical = {name: (root / name).read_bytes() for name in STATE}
+        def register(path):
+            return api.write({"by": "fixture", "note": "Synthetic source boundary check",
+                              "changes": [{"source": {"locator": {"type": "file", "path": str(path)}}}]})
+        rejected = register(external)
+        self.assertEqual(rejected["outcome"], "not_written", rejected)
         self.assertEqual(canonical, {name: (root / name).read_bytes() for name in canonical})
         inspection = api.run(["prepare", "inspect", str(external), "--compact"])
         self.assertFalse(inspection.get("ok", True), inspection)
-        accepted = source_request(inside, "inside.json")
-        preview = api.run(["apply", str(accepted), "--expect-revision", "1", "--dry-run", "--preview-values", "--compact"])
-        self.assertTrue(preview.get("ok"), preview)
-        result = api.apply(str(accepted), 1, preview["transaction_sha256"])
-        self.assertTrue(result.get("ok"), result)
+        result = register(inside)
+        self.assertEqual(result["outcome"], "committed", result)
         prepared = api.run(["prepare", "prepare", "SRC-0001", "--actor", "fixture", "--compact"])
         self.assertTrue(prepared.get("ok"), prepared)
         verified = api.run(["prepare", "verify", "SRC-0001", "--compact"])
         self.assertTrue(verified.get("ok"), verified)
+
+
+    def test_a_0_3_kb_is_reported_and_migrated_into_a_sibling_folder(self):
+        old = legacy_kb(self.project)
+        before = {path.name: path.read_bytes() for path in old.iterdir() if path.is_file()}
+        reported = status(self.project)
+        self.assertEqual((reported["ok"], reported["code"]), (False, "v07_kb_requires_migration"))
+        self.assertEqual(reported["migration_target"], str(self.project / "KnowledgeBase.v08"))
+        with self.assertRaises(LegacyKnowledgeBase):
+            KnowledgeBase(old)
+        existing = configure(self.project, "existing", str(self.project), replace=True)
+        self.assertEqual((existing["ok"], existing["code"]), (False, "v07_kb_requires_migration"))
+        with self.assertRaisesRegex(ValueError, "needs by"):
+            configure(self.project, "migrate")
+        migrated = configure(self.project, "migrate", by="fixture")
+        self.assertTrue(migrated["ready"], migrated)
+        self.assertTrue(migrated["migration_performed"])
+        target = self.project / "KnowledgeBase.v08"
+        self.assertEqual(read_binding(self.project), target)
+        self.assertEqual(migrated["evidence_root"], str(self.project))
+        self.assertTrue(status(self.project)["ready"])
+        orientation = KnowledgeBase(target).read()
+        core = orientation["results"][0]["core"]
+        self.assertEqual((core["purpose"], core["binding"]["root"]), ("", str(self.project)))
+        self.assertEqual({path.name: path.read_bytes() for path in old.iterdir() if path.is_file()}, before)
+        with self.assertRaisesRegex(ValueError, "already uses the current layout"):
+            configure(self.project, "migrate", str(target), by="fixture")
+
+    def test_a_failed_migration_selects_nothing_and_leaves_no_folder(self):
+        old = legacy_kb(self.project)
+        records = old / "records.jsonl"
+        records.write_bytes(records.read_bytes() + b"\n")
+        before = (self.project / ".fist-kb.json").read_bytes()
+        failed = configure(self.project, "migrate", by="fixture")
+        self.assertFalse(failed["ok"], failed)
+        self.assertEqual(failed["migration"]["error"]["code"], "old_kb_inconsistent")
+        self.assertFalse(failed["target_left_for_inspection"])
+        self.assertFalse((self.project / "KnowledgeBase.v08").exists())
+        self.assertEqual((self.project / ".fist-kb.json").read_bytes(), before)
+
+    def test_migration_never_overwrites_an_existing_target(self):
+        legacy_kb(self.project)
+        occupied = self.project / "KnowledgeBase.v08"
+        occupied.mkdir()
+        (occupied / "keep.txt").write_text("user data\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            configure(self.project, "migrate", by="fixture")
+        self.assertEqual((occupied / "keep.txt").read_text(encoding="utf-8"), "user data\n")
 
 
 if __name__ == "__main__":

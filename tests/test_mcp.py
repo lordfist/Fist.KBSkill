@@ -1,4 +1,4 @@
-"""Exercise real MCP stdio negotiation and the reviewed-write workflow."""
+"""Exercise real MCP stdio negotiation, one-call writes with their echo, and new-session recovery."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -14,6 +14,8 @@ import unittest
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+STATE = ("core.json", "records.jsonl", "journal.jsonl", "sources.json")
 
 
 class McpTests(unittest.IsolatedAsyncioTestCase):
@@ -54,62 +56,52 @@ class McpTests(unittest.IsolatedAsyncioTestCase):
                 yield session
 
     def canonical(self):
-        return {name: hashlib.sha256((self.kb / name).read_bytes()).hexdigest()
-                for name in ("core.json", "records.jsonl", "sources.json")}
+        return {name: hashlib.sha256((self.kb / name).read_bytes()).hexdigest() for name in STATE}
 
-    async def test_tools_draft_preview_commit_and_new_session_recovery(self):
+    async def test_tools_write_with_echo_preview_and_new_session_recovery(self):
         async with self.session() as session:
             tools = (await session.list_tools()).tools
-            self.assertEqual({t.name for t in tools}, {"kb_core", "kb_context", "kb_search", "kb_get", "kb_draft",
-                                                      "kb_preview", "kb_apply", "kb_validate", "kb_status", "kb_setup"})
+            self.assertEqual({t.name for t in tools}, {"kb_status", "kb_setup", "kb_read", "kb_write"})
             by_name = {t.name: t for t in tools}
-            self.assertTrue(by_name["kb_get"].annotations.readOnlyHint)
-            self.assertFalse(by_name["kb_apply"].annotations.readOnlyHint)
-            context = await session.call_tool("kb_context", {})
-            self.assertFalse(context.isError, context)
-            revision = context.structuredContent["kb_revision"]
+            self.assertTrue(by_name["kb_read"].annotations.readOnlyHint)
+            self.assertFalse(by_name["kb_write"].annotations.readOnlyHint)
+            orientation = await session.call_tool("kb_read", {})
+            self.assertFalse(orientation.isError, orientation)
+            self.assertEqual(orientation.structuredContent["mode"], "orientation")
+            revision = orientation.structuredContent["revision"]
             before = self.canonical()
-            request = {"actor": "MCP example", "note": "Remember the selected colour",
-                       "new_records": [{"id": "DEC-0001", "kind": "owner_decision", "status": "active",
-                                        "statement": "Use blue for the project chart.", "source_refs": [],
-                                        "resolution_notes": [{"note": "Colour chosen."}]}]}
-            draft = await session.call_tool("kb_draft", {"request": request, "expect_revision": revision})
-            self.assertFalse(draft.isError, draft)
-            self.assertEqual(before, self.canonical())
-            transaction = draft.structuredContent["transaction"]
-            preview = await session.call_tool("kb_preview", {"transaction": transaction, "expect_revision": revision})
+            request = {"by": "MCP example", "note": "Remember the selected colour", "changes": [
+                {"new": {"ref": "d", "kind": "owner_decision", "title": "Chart colour",
+                         "statement": "Use blue for the project chart.", "quote": "Make the chart blue."}},
+                {"log": {"id": "$d", "text": "Colour chosen in the planning chat."}}]}
+            preview = await session.call_tool("kb_write", {"request": {**request, "preview": True}})
             self.assertFalse(preview.isError, preview)
-            self.assertIsNone(preview.structuredContent["next_offset"])
-            self.assertTrue(preview.structuredContent["preview"]["values_included"])
-            sha = preview.structuredContent["transaction_sha256"]
+            self.assertEqual(preview.structuredContent["outcome"], "preview")
             self.assertEqual(before, self.canonical())
-            refused = await session.call_tool("kb_apply", {"transaction": transaction, "expect_revision": revision,
-                                                           "transaction_sha256": "0" * 64})
-            self.assertTrue(refused.isError)
-            self.assertEqual(before, self.canonical())
-            applied = await session.call_tool("kb_apply", {"transaction": transaction, "expect_revision": revision,
-                                                           "transaction_sha256": sha})
-            self.assertFalse(applied.isError, applied)
-            self.assertTrue(applied.structuredContent["write_outcome"]["verification_completed"])
+            written = await session.call_tool("kb_write", {"request": {"confirm": preview.structuredContent["preview_id"],
+                                                                       "by": "MCP example"}})
+            self.assertFalse(written.isError, written)
+            self.assertEqual(written.structuredContent["outcome"], "committed")
+            self.assertEqual(written.structuredContent["revision"], revision + 1)
+            self.assertEqual(written.structuredContent["ids"], {"d": "DEC-0001"})
             after = self.canonical()
-            stale = await session.call_tool("kb_apply", {"transaction": transaction, "expect_revision": revision,
-                                                         "transaction_sha256": sha})
-            self.assertTrue(stale.isError)
+            refused = await session.call_tool("kb_write", {"request": {"by": "MCP example", "changes": [
+                {"set": {"id": "DEC-0001", "fields": {"statement": "Use green."}}}]}})
+            self.assertTrue(refused.isError)
+            self.assertEqual(refused.structuredContent["error"]["code"], "revision_required")
             self.assertEqual(after, self.canonical())
         async with self.session() as recovered:
-            found = await recovered.call_tool("kb_search", {"query": "blue"})
+            found = await recovered.call_tool("kb_read", {"request": {"query": "blue"}})
             self.assertFalse(found.isError, found)
-            self.assertIn("DEC-0001", json.dumps(found.structuredContent))
-            full = await recovered.call_tool("kb_get", {"identifiers": ["DEC-0001"]})
+            self.assertEqual(found.structuredContent["results"][0]["id"], "DEC-0001")
+            full = await recovered.call_tool("kb_read", {"request": {"ids": ["DEC-0001"], "log": "all"}})
             self.assertFalse(full.isError, full)
-            self.assertEqual(full.structuredContent["value"]["statement"], "Use blue for the project chart.")
-            page = await recovered.call_tool("kb_get", {"identifiers": ["DEC-0001"], "array": "resolution_notes"})
-            self.assertFalse(page.isError, page)
-            checked = await recovered.call_tool("kb_validate", {"deep": True})
-            self.assertFalse(checked.isError, checked)
+            parts = full.structuredContent["results"]
+            self.assertEqual(parts[0]["quote"], "Make the chart blue.")
+            self.assertEqual([part["text"] for part in parts if "log" in part], ["Colour chosen in the planning chat."])
             self.assertEqual(after, self.canonical())
 
-    async def test_fixed_binding_status_core_and_setup_do_not_touch_project_binding(self):
+    async def test_fixed_binding_status_read_and_setup_do_not_touch_project_binding(self):
         from fist_kb.initialize import initialize
         from fist_kb.setup import configure
         other = self.area / "Project B"
@@ -132,31 +124,34 @@ class McpTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(state["workflow_activation"], "requires_operating_skill")
             conflicting = await session.call_tool("kb_status", {"project": str(other)})
             self.assertTrue(conflicting.isError)
-            self.assertIn("fixed --kb", conflicting.structuredContent["error"])
+            self.assertIn("fixed --kb", conflicting.structuredContent["error"]["message"])
             refused = await session.call_tool("kb_setup", {"project": str(other), "mode": "existing",
                 "folder": str(self.project), "replace": True, "allow_separate_store": True})
             self.assertTrue(refused.isError)
-            self.assertIn("fixed --kb", refused.structuredContent["error"])
-            core = await session.call_tool("kb_core", {"expect_revision": 1})
-            self.assertFalse(core.isError, core)
-            self.assertFalse(core.structuredContent["core_is_projection"])
-            self.assertEqual(core.structuredContent["core"], json.loads((self.kb / "core.json").read_bytes()))
-            wrong_core = await session.call_tool("kb_core", {"project": str(other)})
-            self.assertTrue(wrong_core.isError)
+            self.assertIn("fixed --kb", refused.structuredContent["error"]["message"])
+            orientation = await session.call_tool("kb_read", {})
+            self.assertFalse(orientation.isError, orientation)
+            core = orientation.structuredContent["results"][0]["core"]
+            stored = json.loads((self.kb / "core.json").read_bytes())
+            self.assertEqual(core, {key: value for key, value in stored.items() if key != "state_files"})
+            wrong = await session.call_tool("kb_read", {"project": str(other)})
+            self.assertTrue(wrong.isError)
         self.assertEqual(before_selection, selection.read_bytes())
         self.assertEqual(before, self.canonical())
 
-    async def test_read_errors_and_outside_transaction_are_reported_as_errors(self):
+    async def test_invalid_requests_are_reported_as_errors_and_change_nothing(self):
         before = self.canonical()
-        outside = self.project / "outside.json"
-        outside.write_text("{}", encoding="utf-8")
         async with self.session() as session:
-            missing = await session.call_tool("kb_get", {"identifiers": ["FACT-9999"]})
-            self.assertTrue(missing.isError)
-            bad = await session.call_tool("kb_preview", {"transaction": str(outside), "expect_revision": 1})
-            self.assertTrue(bad.isError)
-            continued = await session.call_tool("kb_search", {"query": "blue", "offset": 2})
-            self.assertTrue(continued.isError)
+            unknown = await session.call_tool("kb_read", {"request": {"frobnicate": True}})
+            self.assertTrue(unknown.isError)
+            self.assertEqual(unknown.structuredContent["error"]["code"], "request_invalid")
+            token = await session.call_tool("kb_read", {"request": {"continue": "not-a-token"}})
+            self.assertTrue(token.isError)
+            nameless = await session.call_tool("kb_write", {"request": {"changes": [
+                {"new": {"kind": "observed_fact", "title": "A", "statement": "a"}}]}})
+            self.assertTrue(nameless.isError)
+            self.assertEqual(nameless.structuredContent["error"]["code"], "actor_required")
+            self.assertEqual(nameless.structuredContent["outcome"], "not_written")
         self.assertEqual(before, self.canonical())
 
 

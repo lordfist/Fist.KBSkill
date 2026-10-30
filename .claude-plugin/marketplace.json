@@ -5,8 +5,8 @@
     {
       "name": "fist-kb",
       "source": "./",
-      "description": "Local typed knowledge and reviewed updates.",
-      "version": "0.3.0"
+      "description": "Local typed knowledge and checked updates.",
+      "version": "0.4.0"
     }
   ]
 }

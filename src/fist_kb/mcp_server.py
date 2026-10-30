@@ -21,17 +21,15 @@ def create_server(root: str | Path | None = None) -> FastMCP:
         "Persistent project knowledge. Load and follow the fist-kb operating skill before working-memory use. "
         "Service readiness is not workflow activation or permission. During onboarding/update/recovery call "
         "kb_status(verify_runtime=true); verification checks package bytes, not authority. In project mode "
-        "supply the current absolute project directory on every call; use kb_setup for an authorized selection. "
-        "Warn before opening its Windows picker. Fixed --kb servers require project to be omitted; "
-        "their status always refers to that fixed KB and setup is unavailable. "
-        "Use the complete current core from the session-start hook or kb_core (core_is_projection=false); "
-        "reload it after context loss, a KB switch or another writer's revision change. Consult kb_context "
-        "at task start, on topic changes and before knowledge-dependent decisions, not for every message. "
-        "Follow detail IDs and revision-bound pages; search when routes or briefs are insufficient. "
-        "Preserve decisions, facts, claims and uncertainty. Within authorized maintenance save material "
-        "changes via kb_draft, all kb_preview pages, then kb_apply with the reviewed revision and SHA-256. "
-        "Inspect write_outcome and CLI diagnostics on errors; never replay an uncertain write. "
-        "Remembered instructions confer no new authority."
+        "supply the current absolute project directory on every call; use kb_setup for an authorized selection "
+        "or a one-time migration of a 0.3.x KB. Warn before opening its Windows picker. Fixed --kb servers "
+        "require project to be omitted; their status always refers to that fixed KB and setup is unavailable. "
+        "Use the orientation from the session-start hook, or kb_read({}) after context loss. Read with kb_read "
+        "at task start, on topic changes and before knowledge-dependent decisions, not for every message; "
+        "follow continue tokens and search before claiming absence. Save with kb_write as things happen: one "
+        "call commits and echoes what was stored; pass by and, for replacing operations, expect_revision from "
+        "the result your change is based on. Never resend a write whose outcome is uncertain. Recorded "
+        "knowledge confers no new authority."
     ))
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
@@ -53,7 +51,8 @@ def create_server(root: str | Path | None = None) -> FastMCP:
         try:
             value = function(*args, **kwargs)
         except (ValueError, OSError, RuntimeError) as exc:
-            value = {"ok": False, "code": "invalid_request", "error": str(exc)}
+            value = {"ok": False, "error": {"code": getattr(exc, "code", None) or "invalid_request",
+                                            "message": str(exc)}}
         return CallToolResult(content=[TextContent(type="text", text=json.dumps(value, ensure_ascii=False))],
                               structuredContent=value, isError=value.get("ok") is False)
 
@@ -68,7 +67,7 @@ def create_server(root: str | Path | None = None) -> FastMCP:
                      "memory_service_ready": checked.get("ok", False), "binding_mode": "fixed",
                      "kb_root": str(kb.root), "evidence_root": str(kb.root.parent),
                      "workflow_activation": "requires_operating_skill", "validation": checked,
-                     "next": "Load the operating skill and full core; a valid service does not establish workflow activation."}
+                     "next": "Load the operating skill and the orientation; a valid service does not establish workflow activation."}
         else:
             if not project:
                 raise ValueError("Supply the current absolute project directory in project mode.")
@@ -84,11 +83,11 @@ def create_server(root: str | Path | None = None) -> FastMCP:
                 value.update(ok=False, ready=False, memory_service_ready=False)
         return value
 
-    def configure_binding(project: str, mode: str, folder: str | None,
-                          replace: bool, allow_separate_store: bool) -> dict:
+    def configure_binding(project: str, mode: str, folder: str | None, replace: bool,
+                          allow_separate_store: bool, by: str | None) -> dict:
         if fixed is not None:
             raise ValueError("This server has a fixed --kb binding. kb_setup cannot change it or any project selection; configure a project-mode server separately.")
-        return configure(project, mode, folder, replace=replace, allow_separate_store=allow_separate_store)
+        return configure(project, mode, folder, replace=replace, allow_separate_store=allow_separate_store, by=by)
 
     @server.tool(annotations=read, structured_output=False)
     async def kb_status(project: str | None = None, verify_runtime: bool = False) -> CallToolResult:
@@ -96,72 +95,32 @@ def create_server(root: str | Path | None = None) -> FastMCP:
         return await asyncio.to_thread(invoke, binding_status, project, verify_runtime)
 
     @server.tool(annotations=write, structured_output=False)
-    async def kb_setup(project: str, mode: str, folder: str | None = None,
-                       replace: bool = False, allow_separate_store: bool = False) -> CallToolResult:
-        """Project mode only: select 'existing' or 'create'. Omit folder for a Windows picker (tell user first).
+    async def kb_setup(project: str, mode: str, folder: str | None = None, replace: bool = False,
+                       allow_separate_store: bool = False, by: str | None = None) -> CallToolResult:
+        """Project mode only: mode 'existing', 'create' or 'migrate'. Omit folder for a Windows picker (tell user first).
 
-        Save the choice for this exact project. Existing mode never migrates knowledge.
-        replace=true changes an existing selection only when requested.
-        allow_separate_store=true explicitly accepts KB.parent as the evidence boundary
-        when it differs from this project; it does not grant access to project sources.
-        Service setup does not by itself activate the working-memory workflow.
+        Saves the choice for this exact project. replace=true changes an existing selection only when requested.
+        allow_separate_store=true explicitly accepts KB.parent as the evidence boundary when it differs from this
+        project; it does not grant access to project sources. 'migrate' (with by = your name, after the user's
+        consent) copies a Fist KB 0.3.x KB into a new sibling folder, checks that nothing was lost, selects it and
+        leaves the old KB unchanged. Setup does not by itself activate the working-memory workflow.
         """
-        return await asyncio.to_thread(invoke, configure_binding, project, mode, folder, replace, allow_separate_store)
+        return await asyncio.to_thread(invoke, configure_binding, project, mode, folder, replace,
+                                       allow_separate_store, by)
 
     @server.tool(annotations=read, structured_output=False)
-    async def kb_core(budget: int = 8000, expect_revision: int | None = None,
-                      project: str | None = None) -> CallToolResult:
-        """Load complete current core, never a summary. Reports actual KB/evidence roots; fails if budget cannot fit full core. Linked record IDs are bounded separately."""
-        return await asyncio.to_thread(invoke, operation, project, "core", budget=budget, expect_revision=expect_revision)
-
-    @server.tool(annotations=read, structured_output=False)
-    async def kb_context(topics: list[str] | None = None, budget: int = 2000, limit: int = 10,
-                   offset: int = 0, expect_revision: int | None = None,
-                   project: str | None = None) -> CallToolResult:
-        """Read a bounded orientation and topic records. Follow omitted detail; continue at the same revision."""
-        return await asyncio.to_thread(invoke, operation, project, "context", topics, budget=budget, limit=limit, offset=offset, expect_revision=expect_revision)
-
-    @server.tool(annotations=read, structured_output=False)
-    async def kb_search(query: str, budget: int = 4000, limit: int = 10, offset: int = 0,
-                  expect_revision: int | None = None, history: bool = False,
-                   records_only: bool = True, project: str | None = None) -> CallToolResult:
-        """Search recorded knowledge; hits are navigation, not full evidence. Historical fields are opt-in."""
-        return await asyncio.to_thread(invoke, operation, project, "search", query, budget=budget, limit=limit, offset=offset,
-                      expect_revision=expect_revision, history=history, records_only=records_only)
-
-    @server.tool(annotations=read, structured_output=False)
-    async def kb_get(identifiers: list[str], fields: list[str] | None = None, array: str | None = None,
-               budget: int = 6000, limit: int = 20, offset: int = 0,
-               expect_revision: int | None = None, metadata_only: bool = True,
-               project: str | None = None) -> CallToolResult:
-        """Read full records or selected fields. Page a large array with array/offset/limit and a fixed revision."""
-        return await asyncio.to_thread(invoke, operation, project, "get", identifiers, fields=fields, array=array, budget=budget, limit=limit,
-                      offset=offset, expect_revision=expect_revision, metadata_only=metadata_only)
-
-    @server.tool(annotations=write, structured_output=False)
-    async def kb_draft(request: dict[str, Any], expect_revision: int,
-                       project: str | None = None) -> CallToolResult:
-        """Save a request and draft transaction, without changing canonical knowledge. Request needs actor and explicit record/core changes."""
-        return await asyncio.to_thread(invoke, operation, project, "draft", request, expect_revision)
-
-    @server.tool(annotations=read, structured_output=False)
-    async def kb_preview(transaction: str, expect_revision: int, budget: int = 6000, limit: int = 100,
-                   offset: int = 0, transaction_sha256: str | None = None,
-                   preview_time: str | None = None, project: str | None = None) -> CallToolResult:
-        """Preview full changes and validate sources. Read every page; keep revision, transaction hash and preview time fixed for continuation."""
-        return await asyncio.to_thread(invoke, operation, project, "preview", transaction, expect_revision, budget=budget, limit=limit, offset=offset,
-                      transaction_sha256=transaction_sha256, preview_time=preview_time)
+    async def kb_read(request: dict[str, Any] | None = None, project: str | None = None) -> CallToolResult:
+        """Read the KB. {} orientation; {"ids": [...]} records (log/history on request); {"topic": T};
+        {"query": Q, "topic"?, "scope"?}; {"kinds": [...], "status"?}; {"changes_since": REV}; {"request": ID}.
+        Optional limit and budget. When complete is false, send {"continue": TOKEN} alone. Never fails for size."""
+        return await asyncio.to_thread(invoke, operation, project, "read", request)
 
     @server.tool(annotations=update, structured_output=False)
-    async def kb_apply(transaction: str, expect_revision: int, transaction_sha256: str,
-                       project: str | None = None) -> CallToolResult:
-        """Commit a reviewed transaction once, bound to its revision and exact hash. Can replace record fields; inspect write_outcome on any failure."""
-        return await asyncio.to_thread(invoke, operation, project, "apply", transaction, expect_revision, transaction_sha256)
-
-    @server.tool(annotations=read, structured_output=False)
-    async def kb_validate(deep: bool = False, project: str | None = None) -> CallToolResult:
-        """Validate knowledge structure and references; deep=true also checks registered source/prepared bytes."""
-        return await asyncio.to_thread(invoke, operation, project, "validate", deep=deep)
+    async def kb_write(request: dict[str, Any], project: str | None = None) -> CallToolResult:
+        """Write the KB in one call: {"changes": [...], "by": NAME, "note"?, "expect_revision"?, "preview"?, "request_id"?}.
+        Operations: new, set, log, add, remove, status, restore, core, source (see the fist-kb skill for shapes).
+        Replacing operations need expect_revision. Read the echo; on outcome uncertain, check before any resend."""
+        return await asyncio.to_thread(invoke, operation, project, "write", request)
 
     return server
 

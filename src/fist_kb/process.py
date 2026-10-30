@@ -73,8 +73,8 @@ def _close_finished_streams(process: subprocess.Popen) -> None:
 
 
 def run_captured(command: list[str], *, env: dict[str, str] | None,
-                 timeout: float) -> subprocess.CompletedProcess[str]:
-    """Capture UTF-8 output with closed input; terminate the owned tree on timeout.
+                 timeout: float, input: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Capture UTF-8 output; send ``input`` (or nothing) and close stdin; terminate the owned tree on timeout.
 
 The command timeout is followed by bounded termination/output-drain attempts.
 Failure diagnostics are attached to TimeoutExpired as the JSON-compatible
@@ -84,10 +84,10 @@ Failure diagnostics are attached to TimeoutExpired as the JSON-compatible
         raise ValueError("timeout must be a finite positive number")
     options: dict[str, Any] = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
                                if os.name == "nt" else {"start_new_session": True})
-    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, encoding="utf-8", env=env, **options)
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL if input is None else subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", env=env, **options)
     try:
-        stdout, stderr = process.communicate(timeout=timeout)
+        stdout, stderr = process.communicate(input=input, timeout=timeout)
     except subprocess.TimeoutExpired as original:
         termination = _terminate_tree(process)
         stdout, stderr = _text(original.output), _text(original.stderr)

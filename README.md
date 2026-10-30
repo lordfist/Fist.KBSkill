@@ -38,14 +38,16 @@ Choose a new or existing KB and select its folder. Setup validates the selection
 
 For project-file evidence, choose your project folder as the parent of `KnowledgeBase`. For an existing KB, choose `KnowledgeBase` itself or its parent. See the [integration guide](docs/INTEGRATIONS.md) for other storage choices and local-checkout installation.
 
-The session-start hook loads the selected KB's core at startup and after compaction; Codex asks you to review and trust the hook first.
+The session-start hook loads the selected KB's orientation (its core and current task) at startup and after compaction; Codex asks you to review and trust the hook first.
+
+**Upgrading from 0.3.x:** version 0.4.0 stores knowledge in a new layout. Setup offers a one-time migration of an existing KB into a new sibling folder and keeps the old folder unchanged. See [upgrading a KB](docs/USAGE.md#upgrade-a-kb-from-fist-kb-03x).
 
 ## What it does
 
 - **Keeps useful context:** decisions, findings, corrections and the evidence behind them.
-- **Finds the right detail:** topic-based briefs, keyword search and individual record lookups.
+- **Finds the right detail:** topic routes, keyword search and individual record lookups, paged so large results never fail.
 - **Preserves distinctions:** facts, claims and recommendations retain their sources and uncertainty.
-- **Makes changes reviewable:** updates are drafted and previewed before committing, with checks for conflicting changes.
+- **Makes changes checkable:** each update is saved in one step and echoed back, replaced values stay in the record's history, and revision checks catch conflicting changes. An optional preview is available.
 - **Fits your workflow:** Claude Code and Codex plugins, plus a Python API and command-line interface.
 
 No model dependency or vector database is required. Agents explicitly choose what to record; conversations are not automatically captured.
@@ -62,7 +64,7 @@ From a source checkout, with Python 3.11+ and [uv](https://docs.astral.sh/uv/) a
 
 ```text
 uv run --locked fist-kb init /absolute/existing/project
-uv run --locked fist-kb --kb /absolute/existing/project/KnowledgeBase context --brief --compact
+uv run --locked fist-kb --kb /absolute/existing/project/KnowledgeBase read
 ```
 
 Run tests or build release packages:

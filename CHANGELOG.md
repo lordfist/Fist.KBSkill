@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- Replace the KB engine with the Seed KB v08 engine. Each record kind has a closed field set with size limits, every record has a dated log and an automatic history of replaced values, `task` records hold the current step, next action and stop, and routes are formed by record topics. **Not backward compatible:** a 0.3.x KB is read only after a one-time migration.
+- Two knowledge tools replace eight: `kb_read` (orientation, known records, routes, search, lists, changes and write checks; large results page instead of failing) and `kb_write` (one call commits, verifies and echoes what was stored; IDs are allocated by the tool; optional preview and confirm; `expect_revision` is checked per target for replacing operations; a `request_id` makes a resend safe). `kb_core`, `kb_context`, `kb_search`, `kb_get`, `kb_validate`, `kb_draft`, `kb_preview` and `kb_apply` are removed; `kb_status` and `kb_setup` remain.
+- Upgrade path: `kb_status` and the session-start hook report a 0.3.x KB as `v07_kb_requires_migration`. With consent, `kb_setup` mode `migrate` (or `fist-kb admin migrate-v07`) copies it into a new sibling folder after checking every old field, selects the new folder and leaves the old KB unchanged. A null 0.3.x purpose migrates as empty text.
+- The session-start hook adds the orientation (core, current task, recent writes, index and pinned records) within 6,000 bytes, or its first page with a continue token.
+- Sources are registered and revised with `kb_write`; preparation, deep validation and guest reads stay on the CLI. The guest reader is interface 2: any `kb_read` request, with record fingerprints. Checkpoint comparison and request/transaction files are removed.
+- CLI: `read` and `write` (JSON text, `@file` or `-` for stdin), `admin validate|verify-tools|migrate-v07|recover|export`, `prepare` and `guest`; `init` accepts `--purpose` and `--owner`. Every read and write checks the installed package files against the package manifest, and writes are refused on a mismatch.
+- The project-memory block template now names `kb_read`. Projects with an older block keep its wording until setup updates that block with consent.
+
 ## 0.3.0
 
 - Order search, context, brief and evidence results by match quality: a whole word (or its plural or word form) before the start of a longer word before text inside a word, and records matching more of the query words first. `guard` now lists "guard clauses" before "safeguards"; a hash prefix and `plan` -> `planning` still match.

@@ -31,14 +31,11 @@ from typing import Any, Iterable
 from xml.etree import ElementTree as ET
 
 
-from . import kb  # Shared configured-root and validation helpers.
+from . import kb_store as store  # v08 state, validation and commit protocol; configured root.
 
 
-KB_ROOT = kb.KB_ROOT
-EXPERIMENT_ROOT = kb.EXPERIMENT_ROOT
-SOURCES_PATH = kb.SOURCES_PATH
-CORE_PATH = kb.CORE_PATH
-RECORDS_PATH = kb.RECORDS_PATH
+KB_ROOT = store.KB_ROOT
+EXPERIMENT_ROOT = store.BINDING_ROOT
 PREPARED_ROOT = KB_ROOT / "prepared"
 
 PREPARER_VERSION = 3
@@ -80,7 +77,10 @@ def utc_now() -> str:
 
 
 def emit(value: Any, *, compact: bool = False) -> None:
-    kb.emit(value, compact=compact)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdout.write(json.dumps(value, ensure_ascii=False, indent=None if compact else 2,
+                                separators=(",", ":") if compact else None) + "\n")
 
 
 def clean_text(value: str) -> str:
@@ -913,7 +913,7 @@ def validate_source_path(path: Path) -> Path:
         raise PrepareError(f"source cannot be resolved: {path}") from exc
     if not resolved.is_file():
         raise PrepareError(f"source is not a regular file: {path}")
-    if not kb.within(resolved, EXPERIMENT_ROOT) or kb.within(resolved, KB_ROOT):
+    if not store.within(resolved, EXPERIMENT_ROOT) or store.within(resolved, KB_ROOT):
         raise PrepareError(f"source must be inside the experiment root and outside KnowledgeBase: {path}")
     return resolved
 
@@ -923,7 +923,7 @@ def inspect_path(path: Path) -> dict[str, Any]:
     result: dict[str, Any] = {
         "path": str(resolved),
         "size_bytes": resolved.stat().st_size,
-        "sha256": kb.sha256_file(resolved),
+        "sha256": store.sha256_file(resolved),
         "suffix": resolved.suffix.casefold(),
     }
     if resolved.suffix.casefold() in {".docx", ".ods"}:
@@ -948,7 +948,7 @@ def bounded_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
     The original row can therefore be reconstructed without guessing omitted
     keys, list positions, text separators or nested context.
     """
-    if kb.estimate_tokens(row) <= MAX_PREPARED_ITEM_TOKENS and (
+    if store.estimate_tokens(row) <= MAX_PREPARED_ITEM_TOKENS and (
         "text" not in row or len(str(row["text"])) <= HARD_CHARS
     ):
         return [row]
@@ -957,7 +957,7 @@ def bounded_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
 
     def visit(value: Any, pointer: str) -> None:
         fragment = {"pointer": pointer, "value": value}
-        if kb.estimate_tokens(fragment) <= MAX_FRAGMENT_TOKENS and not (
+        if store.estimate_tokens(fragment) <= MAX_FRAGMENT_TOKENS and not (
             isinstance(value, str) and len(value) > HARD_CHARS
         ):
             fragments.append(fragment)
@@ -979,12 +979,12 @@ def bounded_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
             for index, item in enumerate(value):
                 candidate = {"pointer": pointer, "items": [*pending, item],
                              "start": start, "end": index + 1, "total_items": len(value)}
-                if kb.estimate_tokens(candidate) > MAX_FRAGMENT_TOKENS:
+                if store.estimate_tokens(candidate) > MAX_FRAGMENT_TOKENS:
                     flush_items()
                     start = index
                     candidate["items"] = [item]
                     candidate["start"] = start
-                if kb.estimate_tokens(candidate) > MAX_FRAGMENT_TOKENS:
+                if store.estimate_tokens(candidate) > MAX_FRAGMENT_TOKENS:
                     visit(item, pointer + "/" + str(index))
                     start = index + 1
                 else:
@@ -1007,19 +1007,26 @@ def bounded_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
                 "continuation": {"format": "json-pointer-v1", "source_locator": locator,
                                  "part": index, "total_parts": total},
                 "fragment": fragment}
-        if kb.estimate_tokens(part) > MAX_PREPARED_ITEM_TOKENS:
+        if store.estimate_tokens(part) > MAX_PREPARED_ITEM_TOKENS:
             raise PrepareError(f"prepared locator or structure exceeds bounded item limit at {locator}")
         output.append(part)
     return output
 
 
+def duplicates(values: Iterable[str]) -> list[str]:
+    seen, repeated = set(), []
+    for value in values:
+        if value in seen and value not in repeated:
+            repeated.append(value)
+        seen.add(value)
+    return repeated
+
+
 def make_prepared(
     source: dict[str, Any], path: Path, preparation_version: int
 ) -> tuple[list[dict[str, Any]], bytes, dict[str, Any]]:
-    if source.get("supersession") is not None:
-        raise PrepareError(f"historical source {source['source_id']} cannot be prepared from the current path; use its successor")
     expected = str(source.get("sha256", "")).upper()
-    before = kb.sha256_file(path)
+    before = store.sha256_file(path)
     if before != expected:
         raise PrepareError(
             f"registered source hash mismatch for {source['source_id']}: expected {expected}, actual {before}"
@@ -1027,7 +1034,7 @@ def make_prepared(
     redactions: collections.Counter[str] = collections.Counter()
     parser_name, parser = parser_for(path)
     content_rows, coverage = parser(path, redactions)
-    after = kb.sha256_file(path)
+    after = store.sha256_file(path)
     if after != before:
         raise PrepareError(f"source changed during preparation: {source['source_id']}")
     summary = redact_text(str(source.get("summary", "")), redactions)
@@ -1042,362 +1049,168 @@ def make_prepared(
         "coverage": coverage,
         "redactions": dict(sorted(redactions.items())),
     }
-    if kb.estimate_tokens(meta) > MAX_PREPARED_ITEM_TOKENS:
+    if store.estimate_tokens(meta) > MAX_PREPARED_ITEM_TOKENS:
         raise PrepareError("preparation metadata exceeds bounded item limit; narrow the input before preparation")
     rows: list[dict[str, Any]] = [meta]
     if summary:
         rows.extend(bounded_rows({"type": "summary", "locator": "catalog:summary", "text": summary}))
     for content in content_rows:
         rows.extend(bounded_rows(content))
-    locators = [str(row.get("locator")) for row in rows[1:] if row.get("locator")]
-    duplicates = kb._duplicates(locators)
-    if duplicates:
-        raise PrepareError(f"duplicate prepared locators: {duplicates[:3]}")
+    repeated = duplicates(str(row.get("locator")) for row in rows[1:] if row.get("locator"))
+    if repeated:
+        raise PrepareError(f"duplicate prepared locators: {repeated[:3]}")
     for row in rows:
-        if kb.estimate_tokens(row) > MAX_PREPARED_ITEM_TOKENS:
+        if store.estimate_tokens(row) > MAX_PREPARED_ITEM_TOKENS:
             raise PrepareError(f"prepared item exceeds bounded limit at {row.get('locator')}")
-    payload = kb.canonical_jsonl_bytes(rows)
-    result = {
-        "source_id": source["source_id"],
-        "path": str(path),
-        "source_sha256": before,
-        "parser": parser_name,
-        "records": len(rows),
-        "coverage": coverage,
-        "redactions": dict(sorted(redactions.items())),
-    }
+    payload = store.jsonl_bytes(rows)
+    result = {"source_id": source["source_id"], "path": str(path), "source_sha256": before, "parser": parser_name,
+              "records": len(rows), "coverage": coverage, "redactions": dict(sorted(redactions.items()))}
     return rows, payload, result
 
 
-def atomic_write_candidate(path: Path, payload: bytes) -> Path:
-    return kb.atomic_stage(path, payload)
+def command_inspect(args: argparse.Namespace) -> dict[str, Any]:
+    return {"ok": True, "inspection": inspect_path(Path(args.path))}
 
 
-def command_inspect(args: argparse.Namespace) -> None:
-    result = inspect_path(Path(args.path))
-    emit({"ok": True, "inspection": result}, compact=args.compact)
-
-
-def command_prepare(args: argparse.Namespace) -> None:
-    progress: dict[str, Any] = {
-        "phase": "before_replacement", "replaced_files": [], "cleanup_errors": [],
-        "commit_completed": False, "verification_completed": False,
-    }
+def prepare(source_ids: list[str], actor: str, upgrade: bool = False) -> dict[str, Any]:
+    """Prepare registered file sources as one revision. Prepared files are published first, then the catalog and
+    core through the v08 commit (core last); a failure after a prepared file is replaced reports uncertain."""
+    progress = {"replaced": [], "committed": False, "verified": False, "cleanup_errors": []}
     try:
-        _command_prepare(args, progress)
-    except Exception as exc:
-        if progress["phase"] == "replacing":
-            # Inspect each target independently: one unreadable target must not
-            # hide effects established for the others. None means absent before.
-            observed: dict[Path, str | None] = {}
-            for path, intended in progress["payload_hashes"].items():
-                try:
-                    current = kb.sha256_file(path) if path.exists() else None
-                    observed[path] = current
-                    previous = progress["before_hashes"][path]
-                    label = path.relative_to(KB_ROOT).as_posix()
-                    if current == intended != previous and label not in progress["replaced_files"]:
-                        progress["replaced_files"].append(label)
-                    if current not in {previous, intended}:
-                        progress["replacement_uncertain"] = True
-                    if (path == progress.get("attempted_path") and previous == intended
-                            and label not in progress["replaced_files"]):
-                        progress["replacement_uncertain"] = True
-                except Exception:
-                    progress["replacement_uncertain"] = True
-            progress["commit_completed"] = all(
-                observed.get(path) == digest for path, digest in progress["payload_hashes"].items()
-            )
-        if progress["commit_completed"]:
-            stage = ("commit_completed_reporting_failed" if progress["verification_completed"]
-                     else "commit_completed_verification_failed")
-        elif progress["replaced_files"]:
-            stage = "partial_replacement"
-        elif progress.get("replacement_uncertain"):
-            stage = "replacement_uncertain"
-        else:
-            stage = "before_replacement"
-        details = dict(getattr(exc, "details", {}))
-        details.update(code="prepare_failed", write_outcome=prepare_outcome(progress, stage))
-        for name in ("from_revision", "to_revision"):
-            if name in progress:
-                details[name] = progress[name]
-        raise kb.KBError(str(exc), **details) from exc
+        return _prepare(source_ids, actor, upgrade, progress)
+    except (store.KBError, PrepareError, OSError) as exc:
+        outcome, stage = store.outcome_for(progress)
+        error = exc.payload() if isinstance(exc, store.KBError) else {"code": "prepare_failed", "message": str(exc)}
+        result = {"ok": False, "outcome": outcome, "error": error}
+        if outcome != "not_written":
+            result["detail"] = {"write_outcome": store.write_outcome(progress, stage)}
+        return result
 
 
-def prepare_outcome(progress: dict[str, Any], stage: str) -> dict[str, Any]:
-    outcome = kb.write_outcome(progress, stage)
-    # Failed staging cleanup needs inspection even if no final file was replaced.
-    outcome["recovery_required"] = outcome["recovery_required"] or bool(progress["cleanup_errors"])
-    return outcome
-
-
-def _command_prepare(args: argparse.Namespace, progress: dict[str, Any]) -> None:
-    actor = getattr(args, "actor", None)
+def _prepare(source_ids: list[str], actor: str, upgrade: bool, progress: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(actor, str) or not actor.strip():
         raise PrepareError("prepare requires an explicit nonempty --actor")
-    core, records, sources = kb.load_state()
-    progress["from_revision"] = core["kb_revision"]
-    kb.require_valid(core, records, sources)
-    preflight = kb.validate_state(core, records, sources, deep=True)
-    if not preflight["ok"]:
-        raise PrepareError("existing evidence integrity check failed: " + "; ".join(preflight["errors"][:8]))
-    source_lookup = kb.source_map(sources)
-    missing = [source_id for source_id in args.source_ids if source_id not in source_lookup]
+    tools = store.tool_status()
+    if tools["status"] != "ok":
+        raise store.KBError("tools_unverified", f"tool identity is {tools['status']}", tools.get("hint", ""))
+    state = store.load_state()
+    store.require_valid(state)
+    if len(set(source_ids)) != len(source_ids):
+        raise PrepareError("source id list contains duplicates")
+    sources = json.loads(json.dumps(state.sources))
+    lookup = {row["source_id"]: row for row in sources.get("sources", [])}
+    missing = [source_id for source_id in source_ids if source_id not in lookup]
     if missing:
         raise PrepareError(f"unknown source ids: {', '.join(missing)}")
-    if len(set(args.source_ids)) != len(args.source_ids):
-        raise PrepareError("source id list contains duplicates")
-
-    original_hashes = {
-        CORE_PATH: kb.sha256_file(CORE_PATH),
-        RECORDS_PATH: kb.sha256_file(RECORDS_PATH),
-        SOURCES_PATH: kb.sha256_file(SOURCES_PATH),
-    }
-    progress["before_hashes"] = dict(original_hashes)
-    next_sources = json.loads(json.dumps(sources))
-    next_lookup = kb.source_map(next_sources)
-    prepared_candidates: dict[Path, bytes] = {}
-    results: list[dict[str, Any]] = []
-    noops: list[str] = []
-    for source_id in args.source_ids:
-        source = next_lookup[source_id]
+    candidates: dict[Path, bytes] = {}
+    results, noops = [], []
+    for source_id in source_ids:
+        source = lookup[source_id]
         if source.get("supersession") is not None:
-            raise PrepareError(f"historical source {source_id} cannot be prepared from the current path; use its successor")
+            raise PrepareError(f"historical source {source_id} cannot be prepared; source lineage is not ported to v08")
         locator = source.get("locator", {})
         if locator.get("type") != "file":
             raise PrepareError(f"source is not a local file: {source_id}")
-        path = validate_source_path(kb.source_local_path(source))
+        path = validate_source_path(Path(locator["path"]))
         existing = source.get("preparation")
-        if isinstance(existing, dict) and existing.get("status") in {"prepared", "partial"} and not args.upgrade:
+        if isinstance(existing, dict) and existing.get("status") in {"prepared", "partial"} and not upgrade:
             verify_one(source)
             noops.append(source_id)
             continue
-        version = 1
-        if isinstance(existing, dict):
-            version = int(existing.get("version", 0)) + 1
+        version = int(existing.get("version", 0)) + 1 if isinstance(existing, dict) else 1
         _rows, payload, result = make_prepared(source, path, version)
         destination = (PREPARED_ROOT / f"{source_id}.jsonl").resolve()
-        if not kb.within(destination, KB_ROOT):
+        if not store.within(destination, KB_ROOT):
             raise PrepareError(f"prepared destination escapes KnowledgeBase: {destination}")
-        payload_sha = hashlib.sha256(payload).hexdigest().upper()
-        if destination.exists() and not args.upgrade:
-            if kb.sha256_file(destination) != payload_sha:
-                raise PrepareError(f"prepared destination already exists with different content: {destination}")
-        progress["before_hashes"][destination] = kb.sha256_file(destination) if destination.exists() else None
-        prepared_candidates[destination] = payload
+        payload_sha = store.sha256_bytes(payload)
+        if destination.exists() and not upgrade and store.sha256_file(destination) != payload_sha:
+            raise PrepareError(f"prepared destination already exists with different content: {destination.name}")
+        candidates[destination] = payload
         coverage = result["coverage"]
-        status = "partial" if any(
-            phrase in json.dumps(coverage, ensure_ascii=False).casefold()
-            for phrase in ("not rendered", "not performed", "imperfect", "not retained")
-        ) else "prepared"
+        status = "partial" if any(phrase in json.dumps(coverage, ensure_ascii=False).casefold()
+                                  for phrase in ("not rendered", "not performed", "imperfect", "not retained")) else "prepared"
         source["preparation"] = {
-            "status": status,
-            "level": effective_preparation_level(source, path),
-            "path": str(destination.relative_to(KB_ROOT)).replace("\\", "/"),
-            "version": version,
-            "preparer_version": PREPARER_VERSION,
-            "source_sha256": result["source_sha256"],
-            "prepared_sha256": payload_sha,
-            "prepared_at": utc_now(),
-            "coverage": coverage,
+            "status": status, "level": effective_preparation_level(source, path),
+            "path": destination.relative_to(KB_ROOT).as_posix(), "version": version,
+            "preparer_version": PREPARER_VERSION, "source_sha256": result["source_sha256"],
+            "prepared_sha256": payload_sha, "prepared_at": utc_now(), "coverage": coverage,
         }
-        result["prepared_sha256"] = payload_sha
-        result["status"] = status
-        results.append(result)
-
+        results.append({**result, "prepared_sha256": payload_sha, "status": status})
     if not results:
-        progress["verification_completed"] = True
-        emit(
-            {
-                "ok": True,
-                "status": "NO-OP",
-                "kb_revision": core["kb_revision"],
-                "already_prepared": noops,
-                "write_outcome": prepare_outcome(progress, "before_replacement"),
-            },
-            compact=args.compact,
-        )
-        return
-
-    next_sources["catalog_revision"] = int(next_sources.get("catalog_revision", 0)) + 1
-    next_sources["updated_at"] = utc_now()
-    sources_payload = kb.canonical_json_bytes(next_sources)
-    next_core = json.loads(json.dumps(core))
-    next_core["kb_revision"] = int(core["kb_revision"]) + 1
-    progress["to_revision"] = next_core["kb_revision"]
-    next_core["updated_at"] = utc_now()
-    next_core["last_maintenance"] = {
-        "at": next_core["updated_at"],
-        "actor": actor,
-        "tool": "prepare.py",
-        "note": f"Prepared {len(results)} registered source(s).",
-    }
-    next_core["state_files"] = {
-        "records_jsonl_sha256": original_hashes[RECORDS_PATH],
-        "sources_json_sha256": hashlib.sha256(sources_payload).hexdigest().upper(),
-    }
-    core_payload = kb.canonical_json_bytes(next_core)
-
-    payloads = dict(prepared_candidates)
-    payloads[SOURCES_PATH] = sources_payload
-    payloads[CORE_PATH] = core_payload
-    progress["payload_hashes"] = {
-        path: hashlib.sha256(payload).hexdigest().upper() for path, payload in payloads.items()
-    }
-    staged: dict[Path, Path] = {}
-    replacement_error: Exception | None = None
-    try:
-        for destination, payload in payloads.items():
-            staged[destination] = atomic_write_candidate(destination, payload)
-        # Inspect the exact unpublished bytes, including every new prepared file.
-        # Existing evidence and source hashes are rechecked after parsing/staging.
-        for destination, staged_path in staged.items():
-            if kb.sha256_file(staged_path) != progress["payload_hashes"][destination]:
-                raise PrepareError(f"staged payload hash mismatch: {destination.name}")
-        staged_core = kb.read_json(staged[CORE_PATH])
-        staged_sources = kb.read_json(staged[SOURCES_PATH])
-        validation = kb.validate_state(staged_core, records, staged_sources, deep=True,
-                                       prepared_overrides=staged)
-        if not validation["ok"]:
-            raise PrepareError("staged candidate is invalid: " + "; ".join(validation["errors"][:8]))
-        for path, expected in progress["before_hashes"].items():
-            actual = kb.sha256_file(path) if path.exists() else None
-            if actual != expected:
-                raise PrepareError(f"concurrent KnowledgeBase modification detected: {path.name}")
-        for destination in [*sorted(prepared_candidates, key=str), SOURCES_PATH, CORE_PATH]:
-            progress["phase"] = "replacing"
-            progress["attempted_path"] = destination
-            os.replace(staged[destination], destination)
-            progress["replaced_files"].append(destination.relative_to(KB_ROOT).as_posix())
-            if destination == CORE_PATH:
-                progress["commit_completed"] = True
-            staged.pop(destination, None)
-    except Exception as exc:
-        replacement_error = exc
-        progress["cleanup_errors"].extend(getattr(exc, "details", {}).get("stage_cleanup_errors", []))
-    finally:
-        # Only owned staging files are cleaned. Published destinations survive
-        # partial failure for inspection; no automatic rollback or retry.
-        for temp_path in staged.values():
-            try:
-                temp_path.unlink(missing_ok=True)
-            except OSError as exc:
-                progress["cleanup_errors"].append({"path": str(temp_path), "error": str(exc)})
-    if replacement_error is not None:
-        raise replacement_error
-    if progress["cleanup_errors"]:
-        raise PrepareError("staged-file cleanup failed; inspect reported temporary paths")
-
-    progress["phase"] = "verification"
-    committed_core, committed_records, committed_sources = kb.load_state()
-    final_validation = kb.validate_state(committed_core, committed_records, committed_sources, deep=True)
-    if not final_validation["ok"] or committed_core.get("kb_revision") != next_core["kb_revision"]:
-        raise PrepareError("post-commit validation failed: " + "; ".join(final_validation["errors"][:8]))
-    progress["verification_completed"] = True
-    progress["phase"] = "reporting"
-    emit(
-        {
-            "ok": True,
-            "status": "PASS",
-            "from_revision": core["kb_revision"],
-            "to_revision": committed_core["kb_revision"],
-            "prepared": results,
-            "already_prepared": noops,
-            "write_outcome": prepare_outcome(progress, "commit_completed"),
-        },
-        compact=args.compact,
-    )
+        return {"ok": True, "outcome": "not_written", "status": "NO-OP", "revision": state.revision,
+                "already_prepared": noops}
+    at = store.utc_now()
+    revision = state.revision + 1
+    journal = [*state.journal, {"type": "write", "rev": revision, "at": at, "by": actor,
+                                "note": f"prepared {', '.join(row['source_id'] for row in results)}",
+                                "ops": [{"op": "prepare", "id": row["source_id"]} for row in results]}]
+    core = {**state.core, "revision": revision,
+            "last_write": {"rev": revision, "at": at, "by": actor, "note": f"prepared {len(results)} source(s)"}}
+    PREPARED_ROOT.mkdir(exist_ok=True)
+    for destination, payload in sorted(candidates.items(), key=lambda item: str(item[0])):
+        staged = store.stage_file(destination, payload)
+        progress["uncertain"] = True
+        os.replace(staged, destination)
+        progress["uncertain"] = False
+        progress["replaced"].append(destination.relative_to(KB_ROOT).as_posix())
+    store.commit(state, core, state.records, journal, sources, progress)
+    return {"ok": True, "outcome": "committed", "revision": revision, "prepared": results, "already_prepared": noops}
 
 
 def verify_one(source: dict[str, Any]) -> dict[str, Any]:
+    """Re-hash one file source and its prepared representation and check the binding between them."""
     source_id = source["source_id"]
-    history_result = None
-    if source.get("supersession") is not None:
-        try:
-            history_result = kb.source_versions.verify_history(kb.EXPERIMENT_ROOT, source)
-        except kb.source_versions.VersionError as exc:
-            raise PrepareError(str(exc)) from exc
-        actual_source_sha = history_result["source_sha256"]
-    else:
-        path = validate_source_path(kb.source_local_path(source))
-        actual_source_sha = kb.sha256_file(path)
+    path = validate_source_path(Path(source.get("locator", {}).get("path", "")))
+    actual_source_sha = store.sha256_file(path)
     expected_source_sha = str(source.get("sha256", "")).upper()
-    prep = source.get("preparation")
-    if not isinstance(prep, dict) or prep.get("status") not in {"prepared", "partial"}:
-        raise PrepareError(f"source has no prepared representation: {source_id}")
-    prep_path = kb.prepared_path(source)
-    if prep_path is None or not prep_path.is_file():
-        raise PrepareError(f"prepared representation is missing: {source_id}")
-    actual_prep_sha = kb.sha256_file(prep_path)
-    expected_prep_sha = str(prep.get("prepared_sha256", "")).upper()
-    first = kb.read_first_jsonl(prep_path)
-    ok = (
-        (actual_source_sha == expected_source_sha or (history_result is not None and not history_result["history_verified"]))
-        and actual_prep_sha == expected_prep_sha
-        and str(prep.get("source_sha256", "")).upper() == expected_source_sha
-        and first.get("source_id") == source_id
-        and str(first.get("source_sha256", "")).upper() == expected_source_sha
-        and first.get("type") == "meta"
-        and first.get("coverage") == prep.get("coverage")
-    )
-    result = {
-        "source_id": source_id,
-        "ok": ok,
-        "source_sha256": actual_source_sha,
-        "prepared_sha256": actual_prep_sha,
-        "preparation_version": first.get("preparation_version"),
-        "coverage": first.get("coverage"),
-        "historical": history_result is not None,
-        "original_bytes_verified": actual_source_sha == expected_source_sha,
-        "warnings": history_result["warnings"] if history_result else [],
-    }
+    check = store.prepared_check(source)
+    ok = actual_source_sha == expected_source_sha and check["status"] == "ok"
+    result = {"source_id": source_id, "ok": ok, "source_sha256": actual_source_sha, "prepared": check}
     if not ok:
         raise PrepareError(f"prepared/source hash chain is stale or inconsistent: {source_id}")
     return result
 
 
-def command_verify(args: argparse.Namespace) -> None:
-    core, records, sources = kb.load_state()
-    kb.require_valid(core, records, sources)
-    lookup = kb.source_map(sources)
+def command_verify(args: argparse.Namespace) -> dict[str, Any]:
+    state = store.load_state()
+    store.require_valid(state)
+    lookup = {row["source_id"]: row for row in state.sources.get("sources", [])}
     if args.source_id not in lookup:
         raise PrepareError(f"unknown source id: {args.source_id}")
-    emit({"ok": True, "verification": verify_one(lookup[args.source_id])}, compact=args.compact)
+    return {"ok": True, "verification": verify_one(lookup[args.source_id])}
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Prepare read-only experiment evidence for the KnowledgeBase")
     subparsers = parser.add_subparsers(dest="command", required=True)
-
     inspect = subparsers.add_parser("inspect", help="read-only format and identity inspection")
     inspect.add_argument("path")
-    inspect.add_argument("--compact", action="store_true")
-    inspect.set_defaults(func=command_inspect)
-
-    prepare = subparsers.add_parser("prepare", help="prepare registered source ids as one logical batch")
-    prepare.add_argument("source_ids", nargs="+")
-    prepare.add_argument("--actor", required=True, help="explicit attribution for this authorized preparation")
-    prepare.add_argument("--upgrade", action="store_true", help="replace a prior derived preparation with a new version")
-    prepare.add_argument("--compact", action="store_true")
-    prepare.set_defaults(func=command_prepare)
-
+    prepare_parser = subparsers.add_parser("prepare", help="prepare registered source ids as one revision")
+    prepare_parser.add_argument("source_ids", nargs="+")
+    prepare_parser.add_argument("--actor", required=True, help="explicit attribution for this authorized preparation")
+    prepare_parser.add_argument("--upgrade", action="store_true", help="replace a prior preparation with a new version")
     verify = subparsers.add_parser("verify", help="rehash one source and its prepared representation")
     verify.add_argument("source_id")
-    verify.add_argument("--compact", action="store_true")
-    verify.set_defaults(func=command_verify)
+    for sub in (inspect, prepare_parser, verify):
+        sub.add_argument("--compact", action="store_true")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    args.func(args)
-    return 0
+    try:
+        if args.command == "inspect":
+            result = command_inspect(args)
+        elif args.command == "prepare":
+            result = prepare(args.source_ids, args.actor, args.upgrade)
+        else:
+            result = command_verify(args)
+    except (store.KBError, PrepareError, OSError) as exc:
+        result = {"ok": False, "error": exc.payload() if isinstance(exc, store.KBError)
+                  else {"code": "prepare_failed", "message": str(exc)}}
+    emit(result, compact=args.compact)
+    return 0 if result.get("ok") else 1
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except (PrepareError, kb.KBError) as exc:
-        emit({"ok": False, "error": str(exc), **getattr(exc, "details", {})}, compact=True)
-        raise SystemExit(2)
+    sys.exit(main())

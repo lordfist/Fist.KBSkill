@@ -1,7 +1,7 @@
 {
   "name": "fist-kb",
-  "version": "0.3.0",
-  "description": "Local project knowledge with guided folder setup and reviewed updates.",
+  "version": "0.4.0",
+  "description": "Local project knowledge with guided folder setup and checked updates.",
   "author": {"name": "Fist"},
   "license": "MIT",
   "skills": "./skills/",

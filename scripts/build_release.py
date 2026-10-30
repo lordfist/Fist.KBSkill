@@ -20,9 +20,11 @@ def identity(path: Path) -> dict:
 def refresh_manifest(root: Path = ROOT) -> dict:
     package = root / "src" / "fist_kb"
     version = tomllib.loads((root / "pyproject.toml").read_text("utf-8"))["project"]["version"]
+    # Python modules and the engine schema they read; the manifest itself is excluded.
+    files = [p for p in package.rglob("*") if p.is_file() and "__pycache__" not in p.parts
+             and (p.suffix == ".py" or p.name == "kb_schema.json")]
     manifest = {"format": 1, "package": "fist-kb", "version": version,
-                "files": {p.relative_to(package).as_posix(): identity(p)
-                          for p in sorted(package.rglob("*.py")) if "__pycache__" not in p.parts}}
+                "files": {p.relative_to(package).as_posix(): identity(p) for p in sorted(files)}}
     (package / "_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 

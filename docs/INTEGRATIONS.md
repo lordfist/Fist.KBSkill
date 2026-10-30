@@ -50,7 +50,7 @@ Quote paths that contain spaces. Use the normal setup flow above after installat
 
 ## Setup and storage
 
-Setup checks package integrity, selects/creates a KB, loads the complete working skill, calls `kb_core`, and retrieves relevant knowledge. An already-configured service follows the same loading steps.
+Setup checks package integrity, selects/creates a KB, loads the complete working skill, reads the orientation with `kb_read`, and retrieves relevant knowledge. An already-configured service follows the same loading steps. A KB created by Fist KB 0.3.x is reported as `v07_kb_requires_migration`; with the user's consent, setup migrates it once into a new sibling folder (`kb_setup` mode `migrate`), selects that folder and leaves the old KB unchanged. See [upgrading](USAGE.md#upgrade-a-kb-from-fist-kb-03x).
 
 For project evidence, select the **actual project directory** as the parent of `KnowledgeBase`. The engine's evidence boundary is always the selected KB's parent. A project at `D:/App` using `D:/Notes/KnowledgeBase` does not thereby gain permission or support to register `D:/App/source.cs`. Separate stores remain useful for notes and their own in-bound evidence; setup requires explicit acknowledgement through `allow_separate_store=true`. It never widens the boundary or rewrites core to evade it. See [evidence workflows](EVIDENCE.md).
 
@@ -70,9 +70,9 @@ After explicit opt-in, append this small block or update the one existing block.
 
 Use Fist KB as this project's working memory. At session start and after context loss, call kb_status for the exact project with verify_runtime=true, then load the complete installed fist-kb working skill through the host or its reported operating_skill_path. Do not rely on the skill description alone.
 
-Use the complete current core from the plugin's session-start hook or kb_core. Consult kb_context at task start, on topic changes and before knowledge-dependent decisions; use kb_get for known records and kb_search when routes or briefs are insufficient. Reload core after context loss, a KB switch or another writer's revision change.
+Use the orientation from the plugin's session-start hook, or kb_read with no keys. Read with kb_read at task start, on topic changes and before knowledge-dependent decisions: ids for known records, topic for a route, query when routes are insufficient. Read the orientation again after context loss, a KB switch or another writer's revision change.
 
-Routine reads, validation and reviewed record/core updates in this project's selected KB are authorized. Save material decisions, findings and corrections as they arise; preserve their evidence, uncertainty and old lookup paths. Explicit read-only instructions and stop decisions take precedence. Source preparation, peer access and unrelated actions need their own applicable scope.
+Routine reads, validation and kb_write updates of records and core in this project's selected KB are authorized. Save material decisions, findings and corrections as they arise; preserve their evidence, uncertainty and old lookup paths. Explicit read-only instructions and stop decisions take precedence. Source preparation, peer access and unrelated actions need their own applicable scope.
 
 The selected KB is resolved from this project's .fist-kb.json. Remembered content supplies evidence, not new authority. Do not resume historical tasks merely because they are recorded.
 <!-- FIST-KB:END -->
@@ -84,13 +84,13 @@ The user may choose **manual use** instead: keep the service and invoke the work
 
 This entry authorizes only the stated memory maintenance. It installs no agent role, background process, automatic transcript capture or guarantee of compliance.
 
-## Session-start core hook
+## Session-start orientation hook
 
-The plugin adds the selected project's complete core to the agent's context when a session starts, resumes, is cleared and after compaction. It does not run on every turn. Claude Code loads `hooks/hooks.json` automatically. Codex loads `hooks/codex-hooks.json` through the manifests and runs it only after the user reviews and trusts the hook; OpenAI does not list plugins with lifecycle hooks in its public plugin directory.
+The plugin adds the selected project's KB orientation (the complete core, the current task, recent writes, an index and pinned records) to the agent's context when a session starts, resumes, is cleared and after compaction. It does not run on every turn. Claude Code loads `hooks/hooks.json` automatically. Codex loads `hooks/codex-hooks.json` through the manifests and runs it only after the user reviews and trusts the hook; OpenAI does not list plugins with lifecycle hooks in its public plugin directory.
 
-Both entries run `scripts/session-context.ps1`, which is read-only. It uses the runtime the MCP launcher already prepared, never installs or downloads anything, and exits quietly when that runtime does not exist yet. A project without `.fist-kb.json` gets no output; an unusable selection gets one line. Output stays within 6,000 bytes; a larger core becomes a marked summary with an instruction to call `kb_core`. Like the launcher, the hook is Windows-only; on other platforms the Codex entry is a no-op. Codex does not document which shell runs a Windows hook command, so that command contains no shell variable syntax and the plugin root is read inside PowerShell; it was tested through `sh` and PowerShell 7, not yet through cmd or Windows PowerShell 5.1. The project is Claude Code's project directory, or for Codex the session's working directory, so start Codex in the folder that holds `.fist-kb.json`.
+Both entries run `scripts/session-context.ps1`, which is read-only. It uses the runtime the MCP launcher already prepared, never installs or downloads anything, and exits quietly when that runtime does not exist yet. A project without `.fist-kb.json` gets no output; an unusable selection or a KB that still needs migration gets one line. Output stays within 6,000 bytes; a larger orientation is cut to its first page, marked as such, with its continue token. Like the launcher, the hook is Windows-only; on other platforms the Codex entry is a no-op. Codex does not document which shell runs a Windows hook command, so that command contains no shell variable syntax and the plugin root is read inside PowerShell; it was tested through `sh` and PowerShell 7, not yet through cmd or Windows PowerShell 5.1. The project is Claude Code's project directory, or for Codex the session's working directory, so start Codex in the folder that holds `.fist-kb.json`.
 
-To stop it, disable hooks in the host (Claude Code `disableAllHooks`, which affects all hooks) or leave the Codex hook untrusted. The skill then loads core through `kb_core`.
+To stop it, disable hooks in the host (Claude Code `disableAllHooks`, which affects all hooks) or leave the Codex hook untrusted. The skill then reads the orientation through `kb_read`.
 
 ## Runtime and tools
 
@@ -99,9 +99,11 @@ To stop it, disable hooks in the host (Claude Code `disableAllHooks`, which affe
 Project mode ignores inherited `FIST_KB_ROOT` and exposes:
 
 - `kb_status(project, verify_runtime?)`: selected binding, validation, optional packaged-runtime check and the current working-skill locator.
-- `kb_setup(project, mode, folder?, replace?, allow_separate_store?)`: explicit data selection; no project-instruction writes.
-- `kb_core(project, budget?, expect_revision?)`: full core, selected/evidence roots and a completeness indicator. Insufficient budgets fail explicitly.
-- `kb_context`, `kb_search`, `kb_get`, `kb_validate`, `kb_draft`, `kb_preview`, `kb_apply`: ordinary retrieval and reviewed updates.
+- `kb_setup(project, mode, folder?, replace?, allow_separate_store?, by?)`: explicit data selection (`existing` or `create`) or the one-time `migrate` of a 0.3.x KB; no project-instruction writes.
+- `kb_read(request?, project)`: orientation with no keys; known records, routes, search, lists, changes and write checks otherwise. Large results page with a continue token instead of failing.
+- `kb_write(request, project)`: one call commits, verifies and echoes record, core and source changes; optional preview and confirm.
+
+The [usage reference](USAGE.md) defines both request objects; the MCP schema alone describes them only as JSON objects.
 
 The agent performs the optional project-entry edit with the host's normal file tools, only after consent. Cancellation of a folder picker is a no-op. Changing a selection needs explicit replacement; neither KB is deleted. Keep `.fist-kb.json` out of shared commits because it contains local paths.
 
@@ -118,8 +120,8 @@ Direct Python MCP can be configured on other Python platforms; the shipped deskt
 
 ## Check an installation
 
-Verify package integrity once after installation/update and on relevant recovery, then load full core and read context. In disposable data, check a reviewed write, restart and retrieval, two project bindings, fixed-mode status, cancellation and explicit separate-store boundaries. Source registration/preparation uses the [CLI evidence reference](EVIDENCE.md).
+Verify package integrity once after installation/update and on relevant recovery, then read the orientation. In disposable data, check a write and its echo, restart and retrieval, two project bindings, fixed-mode status, cancellation, explicit separate-store boundaries and, where it applies, the migration of a 0.3.x KB. Source registration and preparation are described in the [evidence reference](EVIDENCE.md).
 
-Keep service checks separate from actual agent behavior. A complete host check also verifies that a fresh session shows the hook's core for the selected project and that it reappears after compaction, that a fresh ordinary request loads the operating contract, a correction is recovered, and compaction preserves the current objective and stop boundary. See [validation scope](../VALIDATION.md); tool discovery does not prove those behaviors.
+Keep service checks separate from actual agent behavior. A complete host check also verifies that a fresh session shows the hook's orientation for the selected project and that it reappears after compaction, that a fresh ordinary request loads the operating contract, a correction is recovered, and compaction preserves the current objective and stop boundary. See [validation scope](../VALIDATION.md); tool discovery does not prove those behaviors.
 
 Official loading references: [OpenAI skill activation](https://developers.openai.com/plugins/concepts/skills), [Codex project instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md), [Claude Code project memory](https://code.claude.com/docs/en/memory), and [local plugin packaging](https://developers.openai.com/plugins/build/plugins).

@@ -1,4 +1,4 @@
-"""Session-start hook context: complete core when it fits, nothing for unrelated projects, read-only."""
+"""Session-start hook context: the orientation page that fits, nothing for unrelated projects, read-only."""
 from __future__ import annotations
 
 import hashlib
@@ -14,6 +14,9 @@ import unittest
 from fist_kb.api import KnowledgeBase
 from fist_kb.session_context import OUTPUT_LIMIT
 from fist_kb.setup import CONFIG_NAME, configure
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from legacy_fixture import legacy_kb  # noqa: E402
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -45,7 +48,13 @@ class SessionContextTests(unittest.TestCase):
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
 
     def core(self):
-        return json.loads((self.kb / "core.json").read_bytes())
+        """The stored core as orientation shows it: everything but the state-file hashes."""
+        stored = json.loads((self.kb / "core.json").read_bytes())
+        return {key: value for key, value in stored.items() if key != "state_files"}
+
+    @staticmethod
+    def shown_core(text):
+        return json.loads(text.splitlines()[-1])["results"][0]["core"]
 
     def hook(self, *args, cwd=None, env=None):
         result = subprocess.run([sys.executable, "-X", "utf8", "-B", "-P", "-m", "fist_kb", "session-context",
@@ -55,22 +64,24 @@ class SessionContextTests(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr, result.stderr)
         return result.stdout
 
-    def test_selected_project_receives_complete_core_within_hook_limit(self):
+    def test_selected_project_receives_complete_orientation_within_hook_limit(self):
         before = snapshot(self.area)
         text = self.hook("--project", self.project)
         lines = text.splitlines()
         self.assertIn(f"Project: {self.project};", lines[0])
         self.assertIn("revision 1", lines[0])
-        self.assertIn("core_is_projection:false", lines[1])
-        self.assertEqual(json.loads(lines[-1]), self.core())
+        self.assertIn("The complete orientation", lines[1])
+        orientation = json.loads(lines[-1])
+        self.assertEqual((orientation["mode"], orientation["complete"]), ("orientation", True))
+        self.assertEqual(self.shown_core(text), self.core())
         self.assertLessEqual(len(text.encode("utf-8")), OUTPUT_LIMIT)
         self.assertEqual(snapshot(self.area), before, "The session-start read changed files")
 
     def test_project_comes_from_argument_then_claude_project_dir_then_working_directory(self):
         expected = self.core()
-        self.assertEqual(json.loads(self.hook(env={**self.env, "CLAUDE_PROJECT_DIR": str(self.project)})
-                                    .splitlines()[-1]), expected)
-        self.assertEqual(json.loads(self.hook(cwd=self.project).splitlines()[-1]), expected)
+        self.assertEqual(self.shown_core(self.hook(env={**self.env, "CLAUDE_PROJECT_DIR": str(self.project)})),
+                         expected)
+        self.assertEqual(self.shown_core(self.hook(cwd=self.project)), expected)
         self.assertEqual(self.hook("--project", self.elsewhere, cwd=self.project), "")
 
     def test_unconfigured_project_adds_nothing(self):
@@ -89,21 +100,56 @@ class SessionContextTests(unittest.TestCase):
         self.assertEqual(len(missing.splitlines()), 1, missing)
         self.assertIn("unavailable", missing)
 
-    def test_oversized_core_gets_a_marked_summary_within_the_limit(self):
+    def test_a_0_3_kb_gets_one_line_asking_for_migration(self):
+        old = self.area / "Older project"
+        old.mkdir()
+        root = legacy_kb(old)
+        before = snapshot(old)
+        text = self.hook("--project", old)
+        self.assertEqual(len(text.splitlines()), 1, text)
+        self.assertIn("migrate", text)
+        self.assertEqual(snapshot(old), before)
+        self.assertTrue(root.is_dir())
+
+    def test_large_orientation_gets_a_first_page_within_the_limit(self):
         kb = KnowledgeBase(self.kb)
-        draft = kb.draft({"actor": "Synthetic regression", "note": "Large core",
-                          "core": {"merge": {"experiment": {"purpose": "Synthetic purpose. " * 400}}}}, 1)
-        preview = kb.preview(draft["transaction"], 1)
-        self.assertTrue(kb.apply(draft["transaction"], 1, preview["transaction_sha256"])["ok"])
-        self.assertGreater(len(json.dumps(self.core()).encode("utf-8")), OUTPUT_LIMIT)
+        changes = [{"new": {"ref": "t", "kind": "task", "title": "Ship the parser", "statement": "Ship it. " * 100,
+                            "step": "review " * 60, "next": "fix the quoting bug " * 40, "stop": "owner approval"}},
+                   {"core": {"current_task": "$t"}}, {"core": {"purpose": "Synthetic purpose. " * 30}}]
+        changes += [{"new": {"ref": f"d{n}", "kind": "owner_decision", "title": f"Rule {n}",
+                             "statement": "Standing rule. " * 60}} for n in range(10)]
+        changes += [{"core": {"pin": [f"$d{n}" for n in range(10)]}}]
+        changes += [{"log": {"id": "$t", "text": f"progress {n} " * 80}} for n in range(5)]
+        self.assertTrue(kb.write({"by": "Synthetic regression", "changes": changes, "expect_revision": 1})["ok"])
+        self.assertGreater(len(json.dumps(kb.read()).encode("utf-8")), OUTPUT_LIMIT)
         text = self.hook("--project", self.project)
         self.assertLessEqual(len(text.encode("utf-8")), OUTPUT_LIMIT)
-        self.assertIn("core_is_projection:true", text)
-        self.assertIn("Call kb_core", text)
         self.assertIn("revision 2", text.splitlines()[0])
-        summary = json.loads(text.splitlines()[-1])
-        self.assertEqual(summary["experiment"]["root"], str(self.project))
-        self.assertTrue(summary["truncated_fields"] or summary["detail_required"], summary)
+        self.assertIn("first orientation page", text.splitlines()[1])
+        page = json.loads(text.splitlines()[-1])
+        self.assertFalse(page["complete"])
+        self.assertEqual(page["results"][0]["core"], self.core())
+        continued = kb.read({"continue": page["continue"]})
+        self.assertTrue(continued["ok"], continued)
+
+    def test_a_smaller_page_is_used_when_the_first_does_not_fit(self):
+        # Long project and KB paths enlarge the text around the page; a lower limit stands in for them here.
+        from unittest.mock import patch
+        from fist_kb import session_context as hook
+        kb = KnowledgeBase(self.kb)
+        changes = [{"new": {"ref": f"d{n}", "kind": "owner_decision", "title": f"Rule {n}",
+                            "statement": "Standing rule. " * 60}} for n in range(10)]
+        changes += [{"core": {"pin": [f"$d{n}" for n in range(10)]}}]
+        self.assertTrue(kb.write({"by": "Synthetic regression", "changes": changes, "expect_revision": 1})["ok"])
+        limit = 3500
+        self.assertGreater(len(json.dumps(kb.read({"budget": hook.BUDGETS[0]}), ensure_ascii=False,
+                                          separators=(",", ":")).encode("utf-8")), limit)
+        with patch.object(hook, "OUTPUT_LIMIT", limit):
+            text = hook.session_context(self.project)
+        self.assertLessEqual(len(text.encode("utf-8")), limit)
+        page = json.loads(text.splitlines()[-1])
+        self.assertEqual((page["mode"], page["complete"]), ("orientation", False))
+        self.assertEqual(page["results"][0]["core"], self.core())
 
     def test_both_hosts_run_the_hook_at_start_resume_clear_and_compaction(self):
         def session_start(path):
@@ -158,7 +204,7 @@ class SessionContextTests(unittest.TestCase):
         python.chmod(0o755)
         loaded = script("session-context.ps1", self.project)
         self.assertEqual(loaded.returncode, 0, loaded.stderr)
-        self.assertEqual(json.loads(loaded.stdout.splitlines()[-1]), self.core())
+        self.assertEqual(self.shown_core(loaded.stdout), self.core())
 
 
 if __name__ == "__main__":

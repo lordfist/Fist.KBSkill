@@ -14,8 +14,8 @@ from typing import Any
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = PACKAGE_ROOT / "_manifest.json"
-ENGINE_MODULES = ("kb", "kb_client", "prepare", "consolidation_scope", "source_versions",
-                  "memory_view", "tool_inventory", "guest_access")
+ENGINE_FILES = ("kb.py", "kb_store.py", "kb_read.py", "kb_write.py", "kb_migrate.py", "kb_schema.json",
+                "guest.py", "prepare.py", "source_versions.py")
 
 
 class PackageIntegrityError(RuntimeError):
@@ -49,7 +49,7 @@ def package_manifest() -> tuple[dict[str, Any], str]:
         if manifest.get("package") != "fist-kb" or not isinstance(manifest.get("version"), str):
             raise ValueError("Missing package/version identity")
         files = manifest.get("files")
-        required = {f"_engine/{module}.py" for module in ENGINE_MODULES} | {"runtime.py"}
+        required = {f"_engine/{name}" for name in ENGINE_FILES} | {"runtime.py"}
         if not isinstance(files, dict) or not required.issubset(files):
             raise ValueError("Package manifest omits required runtime modules")
         for name, identity in files.items():

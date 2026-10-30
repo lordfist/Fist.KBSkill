@@ -93,6 +93,14 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "č字 True")
         self.assertEqual(result.stderr.strip(), "stderr č")
 
+    def test_input_is_sent_as_utf8_and_then_closed(self):
+        text = '{"query": "č字"}' + "x" * 100000
+        command = [sys.executable, "-X", "utf8", "-B", "-c",
+                   'import sys; data = sys.stdin.read(); print(len(data), data[:15], sys.stdin.read() == "")']
+        result = run_captured(command, env=self.env, timeout=10, input=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), f'{len(text)} {text[:15]} True')
+
     def test_nonzero_exit_preserves_output_and_return_code(self):
         result = run_captured([sys.executable, "-X", "utf8", "-B", "-c",
                                'import sys; print("reported failure"); sys.exit(7)'], env=self.env, timeout=5)

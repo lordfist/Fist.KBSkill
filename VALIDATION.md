@@ -1,5 +1,35 @@
 # Verification
 
+## 0.4.0 v08 engine - 2026-10-30
+
+Run on Linux only (Python 3.13.16, locked dependencies; the lockfile was updated with uv 0.13.5 and changed only the package version).
+
+- 75 source tests ran: 74 passed and 1 was skipped, the PowerShell hook-script test, because PowerShell 7 was not available on this host. New or rewritten for 0.4.0:
+  - `test_engine` (22 tests, run through the public CLI): operations and refusals, history and restore, paging of large and imported records, revision safety, fault outcomes, request IDs, tool identity, orientation and search, migration, preparation, source revisions with and without Git, ranking, guest reads, and a check that USAGE.md matches the schema and names every error code;
+  - migration of a 0.3.x KB in `test_setup`, `test_project_mcp` and `test_session_context`;
+  - the CLI, MCP, runtime and hook suites for the two-tool interface.
+- The engine files are the v08 release tools named in PROVENANCE.json, with the port changes listed there. The release's own engine test cases were ported, except one that needs data outside this repository.
+- Mutation controls: each of ten deliberate faults made its targeted test fail:
+  - removing `-P` from the API child or from the CLI's engine child;
+  - accepting changed package bytes in the tool check or in the guest reader;
+  - migrating a null purpose as "None";
+  - ignoring the hook's size limit;
+  - dropping the 0.3.x message;
+  - writing without the lock;
+  - keeping a failed migration's folder;
+  - passing requests on the command line instead of stdin.
+- Every JSON example in USAGE.md and EVIDENCE.md ran in order on disposable KBs, together with the commands around them: preparation, deep validation, a source revision without Git, guest reads and turning guest reads off.
+- Migration from 0.3.x: a KB created and written by the 0.3.0 package migrated through `kb_setup` mode `migrate`. Every field was rebuilt and compared, none spilled, and the old KB's bytes were unchanged. This check found that a null 0.3.x purpose migrated as the text "None"; it is fixed in the port.
+- Plugin checks with Claude Code 2.1.314:
+  - `claude plugin validate` passed with the two earlier warnings (no marketplace description, no icon);
+  - an isolated install from the local checkout lists version 0.4.0 with 2 skills, 1 SessionStart hook and 1 MCP server;
+  - always-on cost is about 155 tokens (0.3.0: about 148, same check);
+  - on invoke, the working skill costs about 3.5k tokens (0.3.0: 2.8k) and the setup skill about 1.7k (0.3.0: 1.2k). The skill now carries the kinds and the write operations, which the generic MCP schema cannot describe.
+- The MCP server lists 4 tools in 3,278 bytes of tool definitions; 0.3.0 listed 10 tools in 7,698 bytes.
+- The demo passed and the release outputs were rebuilt on Linux. The wheel, installed into a fresh environment, ran the demo, a write, `admin verify-tools` and `guest info`.
+
+**Qualification limit:** not run on Windows or inside Claude Code or Codex chats: the PowerShell launcher and hook script, the folder picker, the Codex trust review, re-injection after a real compaction, and agent behaviour with the two tools. The field set and size limits come from the v08 release, which calibrated them on one KB.
+
 ## 0.3.0 search ordering - 2026-10-25
 
 Run on Linux only (Python 3.13.16, locked dependencies; lockfile regenerated with uv 0.13.5).

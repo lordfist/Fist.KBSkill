@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "fist-kb",
-  "version": "0.3.0",
-  "description": "Local project knowledge with guided folder setup, bounded recall and reviewed updates.",
+  "version": "0.4.0",
+  "description": "Local project knowledge with guided folder setup, bounded recall and checked updates.",
   "author": {"name": "Fist"},
   "license": "MIT",
   "extensions": {
@@ -13,7 +13,7 @@
       "interface": {
         "displayName": "Fist KB",
         "shortDescription": "Knowledge for your agents",
-        "longDescription": "Choose a local KnowledgeBase for each project. Recall decisions, facts and evidence, then review changes before saving them. Windows desktop integration; Python CLI also available.",
+        "longDescription": "Choose a local KnowledgeBase for each project. Recall decisions, facts and evidence, and save changes that are checked and echoed back. Windows desktop integration; Python CLI also available.",
         "developerName": "Fist",
         "category": "Developer Tools",
         "capabilities": ["Read", "Write"],
